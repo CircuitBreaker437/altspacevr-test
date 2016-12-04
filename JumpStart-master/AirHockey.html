@@ -1,0 +1,1435 @@
+<!-- Powered by the JumpStart Game Engine -->
+<!DOCTYPE html>
+<!--suppress ALL -->
+<html lang="en">
+	<head>
+		<title>Air Hockey</title>
+		<script src="engine/misc/appMenu.js"></script>
+
+		<!-- AltspaceVR SDK Core Includes -->
+		<script src="http://sdk.altvr.com/libs/three.js/r73/build/three.min.js"></script>
+		<script src="http://sdk.altvr.com/libs/three.js/r71/examples/js/loaders/OBJMTLLoader.js"></script>
+		<script src="http://sdk.altvr.com/libs/three.js/r71/examples/js/loaders/MTLLoader.js"></script>
+		<script src="http://sdk.altvr.com/libs/altspace.js/latest/altspace.min.js"></script>
+
+		<script src="http://sdk.altvr.com/libs/three.js/r73/examples/js/geometries/TextGeometry.js"></script>
+		<script src="http://sdk.altvr.com/libs/three.js/r73/examples/js/utils/FontUtils.js"></script>
+		<script src="http://sdk.altvr.com/libs/three.js/r73/examples/fonts/helvetiker_regular.typeface.js"></script>
+
+		<!-- JumpStart SDK Additional Includes -->
+		<script src="legacy/v1/FirebaseSync.js"></script>
+		<script src="legacy/v1/AltOBJMTLLoader.js"></script>
+
+		<!-- JumpStart Styles -->
+		<link rel="stylesheet" type="text/css" href="legacy/v1/myStyle.css" />
+		<style>
+			#leaderboardContainer {
+				position: fixed;
+				top: 0px;
+				width: 100%;
+			}
+
+			#leaderboard {
+				display: flex;
+				flex-direction: row;
+				background: rgba(50, 50, 50, 0.8);
+				-webkit-transform: scaleX(1);
+				transform: scaleX(1);
+			}
+
+			#leaderboard .col {
+				flex: 1 0 auto;
+				padding-bottom: 1em;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				text-align: left;
+			}
+			#leaderboard td {
+				padding-left: 1em;
+			}
+			#leaderboard.flipped {
+				-webkit-transform: scaleX(-1);
+				transform: scaleX(-1);
+			}
+			#leaderboard.flipped .col:nth-child(1) {
+				order: 1;
+			}
+			#leaderboard.flipped .col:nth-child(2) {
+				order: 0;
+			}
+		</style>
+	</head>
+
+	<body>
+		<script id="recentWinTemplate" type="x-template">
+			<td class="recentWinner"></td>
+			<td><span class="scoreDiff"></span> point<span class="scoreDiffPlural">s</span></td>
+		</script>
+		<script id="topWinnerTemplate" type="x-template">
+			<td class="topWinner"></td>
+			<td><span class="wins"></span> game<span class="winsPlural">s</span></td>
+		</script>
+		<div id="leaderboardContainer">
+			<div id="leaderboard">
+				<div class="col">
+					<h2>Recent Wins</h2>
+					<table id="recentWins"></table>
+				</div>
+				<div class="col">
+					<h2>Top Winners</h2>
+					<table id="topWinners"></table>
+				</div>
+			</div>
+		</div>
+
+
+		<!-- JumpStart SDK Core Include -->
+		<script src="legacy/v1/JumpStart.js"></script>
+
+		<!-- Window-Level Event Callbacks -->
+		<script>
+			/* global
+			   JumpStart, THREE, g_worldOffset, g_localUser, g_camera, g_scene, g_clock, g_lookHit, g_deltaTime */
+			/* exported onTick, onPrecache, onReady */
+
+			// Setup JumpStart Options
+			JumpStart.setOptions({
+				"showFPS": false,
+				"worldScale": 2.0,
+				"scaleWithEnclosure": true,
+				"showCursorPlanes": false,
+				"showCrosshair": false,
+				"enabledCursorEvents":
+				{
+					"cursorDown": true,
+					"cursorUp": true,
+					"cursorEnter": true,
+					"cursorLeave": true,
+					"cursorMove": true,
+					"bottomPlane": false,
+					"topPlane": false,
+					"northPlane": false,
+					"southPlane": false,
+					"eastPlane": false,
+					"westPlane": false
+				},
+				"firebase": {
+					"rootUrl": "https://jump-start.firebaseio.com/",
+					"appId": "JumpStart",
+					"suppressPersonalBrowser": true
+				},
+				"camera":
+				{
+					"lookAtOrigin": true,
+					"position": new THREE.Vector3(-5.0, 10.0, 50.0),
+					"translation": new THREE.Vector3(0.0, 30.0, 100.0)
+				}
+			});
+
+			var g_ready = false;
+			var g_strikers = [null, null];
+
+			var g_lastLookHitScaledPoint = new THREE.Vector3();
+			var g_maxPuckOffset = 2.5;
+			var g_puckRadius = 3.0;
+			var g_tableHeight = 30.0;
+			var g_tableWidth = 66.0;
+			var g_tableLength = 126.0;
+			var g_winningScore = 7;
+
+			var g_table = null;
+			var g_puck = null;
+
+			var g_rayCastObjects = new Array();
+
+			var g_leaderboardRef;
+
+			/**
+			 * @function resetStriker
+			 * @param {THREE.Object3D} striker
+			 * @param {Object} [options]
+			 * @param {String} [options.side] Side "a" or side "b"
+			 * @param {Number} [options.strikerNumber] 
+			 * @param {Boolean} [options.resetHandlers] If the striker's existing handlers should be detached
+			 * @param {Boolean} [options.resetOldData] If the striker's old score and owner id should be reset
+			 * @param {Boolean} [options.sync] If the striker should be synced after resetting.
+			 **/
+			function resetStriker(striker, options)
+			{
+				striker.JumpStart.side = options.side;
+				striker.JumpStart.offTable = false;
+				striker.JumpStart.strikerNumber = options.strikerNumber;
+				striker.JumpStart.blocksLOS = true;
+				striker.JumpStart.ownerId = "";
+				striker.JumpStart.score = 0;
+				var handlers = {
+					onSpawn: strikerSpawn,
+					onTick: strikerTick,
+					onCursorEnter: strikerEnter,
+					onCursorLeave: strikerLeave,
+					onCursorDown: strikerDown
+				};
+				if( options.resetHandlers ) 
+				{
+					Object.keys(handlers).forEach(function(event) 
+					{
+						striker.JumpStart[event] = {};
+					});
+				}
+				Object.keys(handlers).forEach(function(event) 
+				{
+					var strikerHandler = handlers[event];
+					striker.JumpStart[event][strikerHandler.name] = strikerHandler;
+				});
+				striker.JumpStart.lerpSync = true;
+
+				if( options.resetOldData ) 
+				{
+					striker.userData.oldScore = 0;
+					striker.userData.oldOwnerId = "";
+				}
+
+				striker.position.set(
+					(options.side === "a" ? -1 : 1) * (g_tableWidth / 2.0 + 10.0),
+					g_worldOffset.y + g_tableHeight,
+					(options.side === "a" ? -1 : 1) * g_tableLength / 3.0);
+
+				if (striker.userData.targetPos)
+					striker.userData.targetPos.copy(striker.position);
+
+				if( options.sync ) 
+				{
+					striker.JumpStart.sync();
+				}
+			}
+						
+			function poseScoreBoardToCamera(strikerNumber)
+			{
+				var scoreBoard, striker;
+				if( g_strikers[strikerNumber] && g_strikers[strikerNumber].JumpStart.ownerId !== "" )
+				{
+					striker = g_strikers[strikerNumber];
+					if( striker.JumpStart.ownerId !== g_localUser.userId )
+					{
+						if( striker.JumpStart.side === "a" && g_scoreBoardA )
+						{
+							scoreBoard = g_scoreBoardA;
+						}
+						else if( striker.JumpStart.side === "b" && g_scoreBoardB )
+						{
+							scoreBoard = g_scoreBoardB;
+						}
+
+						if( scoreBoard && g_camera )
+						{
+							if( scoreBoard.position.z < g_camera.position.z )
+								scoreBoard.rotation.y = strikerNumber === 0 ? 0 : Math.PI;
+							else
+								scoreBoard.rotation.y = strikerNumber === 0 ? Math.PI : 0;
+						}
+					}
+				}
+			}
+
+			function flipLeaderboardToCamera()
+			{
+				if( JumpStart.webMode )
+					return;
+				
+				var head = JumpStart.localUser.trackingSkeleton.getJoint('Head');
+				var leaderboardIsFlipped = leaderboard.classList.contains('flipped');
+				if ( head.position.z >= 0 && leaderboardIsFlipped ) 
+					leaderboard.classList.remove('flipped');
+				else if ( head.position.z < 0 && !leaderboardIsFlipped ) 
+					leaderboard.classList.add('flipped');
+			}
+
+			function onTick()
+			{
+				poseScoreBoardToCamera(0);
+				poseScoreBoardToCamera(1);
+
+				var strikerZeroJS = g_strikers[0] && g_strikers[0].JumpStart;
+				var strikerOneJS = g_strikers[1] && g_strikers[1].JumpStart;
+				var eitherStrikerHasWon = (
+					strikerZeroJS.score >= g_winningScore || strikerOneJS.score >= g_winningScore);
+				if( strikerZeroJS.ownerId === g_localUser.userId && eitherStrikerHasWon )
+				{
+					resetStriker(
+						g_strikers[0],
+						{side: "a", strikerNumber: 0, resetOldData: true, sync: true, resetHandlers: true});
+				}
+				else if( strikerOneJS.ownerId === g_localUser.userId && eitherStrikerHasWon )
+				{
+					resetStriker(
+						g_strikers[1],
+						{side: "b", strikerNumber: 1, resetOldData: true, sync: true, resetHandlers: true});
+				}
+
+				flipLeaderboardToCamera();
+			}
+
+			function resetDown()
+			{
+				reset(false);
+			}
+
+			function reset(lite)
+			{
+				if( !lite && g_resetButton )
+				{
+					g_resetButton.userData.lastNumResets = g_resetButton.JumpStart.numResets + 1;
+				}
+
+				var striker = g_strikers[0];
+
+				if( striker )
+				{
+					if( !lite )
+					{
+						resetStriker(
+							striker,
+							{side: "a", strikerNumber: 0, resetOldData: true, sync: true, resetHandlers: true});
+					}
+				}
+
+				striker = g_strikers[1];
+
+				if( striker )
+				{
+					if( !lite )
+					{
+						resetStriker(
+							striker,
+							{side: "b", strikerNumber: 1, resetOldData: true, sync: true, resetHandlers: true});
+					}
+				}
+
+				if( g_scoreBoardA )
+				{
+					g_scene.remove(g_scoreBoardA);
+					g_scoreBoardA = null;
+				}
+
+				if( g_scoreBoardB )
+				{
+					g_scene.remove(g_scoreBoardB);
+					g_scoreBoardB = null;
+				}
+
+				if( !lite )
+				{
+					g_puck.userData.delayLife = 0.0;
+					g_puck.JumpStart.onTick = {};
+					g_puck.JumpStart.onTick["puckTick"] = puckTick;
+					g_puck.JumpStart.makePhysics();
+					g_puck.JumpStart.freefallRot.set(0, 0, 0);
+					g_puck.position.x = 0.0;
+					g_puck.position.z = 0.0;
+					g_puck.JumpStart.sync();
+
+					if( g_resetButton )
+					{
+						g_resetButton.JumpStart.numResets++;
+						g_resetButton.JumpStart.sync();
+					}
+
+				}
+
+				console.log("air hockey reset");
+			}
+
+			// Window-level callback for onPrecache event
+			function onPrecache()
+			{
+
+				if( JumpStart.personalBrowser || !JumpStart.requestedRoomId )
+				{
+					JumpStart.doneCaching();
+					return;
+				}
+
+				// Precaching is important with networked apps!!
+				// Networked objects might get spawned before the
+				// local client gets the onReady window-level callback!!
+
+				JumpStart.precacheSound("legacy/v1/sounds/AirHockey/score");
+				JumpStart.precacheSound("legacy/v1/sounds/AirHockey/gameover");
+				JumpStart.precacheSound("legacy/v1/sounds/AirHockey/hit1");
+				JumpStart.precacheSound("legacy/v1/sounds/AirHockey/hit2");
+				JumpStart.precacheSound("legacy/v1/sounds/AirHockey/hit3");
+
+				// Precache any models that your app needs (asynchronous)
+				JumpStart.loadModels([
+					"legacy/v1/models/AirHockey/puck.obj",
+					"legacy/v1/models/AirHockey/reset.obj",
+					"legacy/v1/models/AirHockey/striker.obj",
+					"legacy/v1/models/AirHockey/table.obj",
+					"legacy/v1/models/AirHockey/scoreframe.obj",
+					"legacy/v1/models/AirHockey/pixel1.obj",
+					"legacy/v1/models/AirHockey/pixel2.obj"
+				]).then(function()
+				{
+					// All assets cached.
+					JumpStart.doneCaching();
+				});
+			}
+
+			var g_endLine = new Array();	// The lines that appear when you try to move your striker to the other side of the table.
+			var g_resetButton = null;
+
+			// Window-level callback for onReady event
+			function onReady() 
+			{
+				var jumpStartAppMenu = new JumpStartAppMenu("AirHockey", "http://www.jumpstartsdk.com/live/AirHockey.html", g_scene);
+
+				if( !JumpStart.requestedRoomId )
+					return;
+
+				// Do nothing if we are not in an enclosure yet.
+				if( JumpStart.personalBrowser )
+				{
+					var loadingRingElem = document.getElementById("loadingRing" );
+					if( loadingRingElem )
+					{
+						loadingRingElem.parentNode.removeChild(loadingRingElem);
+					}
+
+					var loadingLogoElem = document.getElementById("loadingLogo");
+					if( loadingLogoElem )
+					{
+						loadingLogoElem.src = "legacy/v1/misc/beamnow.png";
+					}
+
+					JumpStart.showLoadingMsg(
+						"Loading complete.<br /><br />" + 
+						"<span class='beamInstructions'>Beam this app to an enclosure to begin!</span>");
+					return;
+				}
+
+				// Assign us as the 1st player
+
+				// Only the 1st user needs to create the networked object
+				if( g_localUser.firstUser ) 
+				{
+					g_resetButton = JumpStart.spawnInstance("legacy/v1/models/AirHockey/reset.obj");
+					g_resetButton.JumpStart.numResets = 0;
+					g_resetButton.JumpStart.blocksLOS = true;
+					g_resetButton.JumpStart.onCursorDown["resetDown"] = resetDown;
+					g_resetButton.JumpStart.onSpawn["resetSpawn"] = resetSpawn;
+					g_resetButton.JumpStart.onTick["resetTick"] = resetTick;
+					g_resetButton.position.set(0, g_worldOffset.y + g_tableHeight * 3 + 5, 0);
+					g_resetButton.rotation.x = Math.PI / 2;
+					g_resetButton.scale.x = 0.5;
+					g_resetButton.scale.z = 0.5;
+					g_resetButton.JumpStart.sync();
+
+					g_puck = JumpStart.spawnInstance("legacy/v1/models/AirHockey/puck.obj");
+					g_puck.JumpStart.ownerId = "";
+					g_puck.JumpStart.blocksLOS = false;
+					g_puck.JumpStart.onSpawn["puckSpawn"] = puckSpawn;
+					g_puck.JumpStart.onTick["puckTick"] = puckTick;
+					g_puck.JumpStart.makePhysics();
+					g_puck.JumpStart.freefallRot.set(0, 0, 0);
+					g_puck.JumpStart.sync();
+
+					var striker = JumpStart.spawnInstance("legacy/v1/models/AirHockey/striker.obj");
+					resetStriker(striker, {side: "a", strikerNumber: 0});
+					g_strikers[0] = striker;
+					striker.userData.lastSyncPos = new THREE.Vector3().copy(striker.position);
+					striker.userData.lastSyncTime = g_clock.elapsedTime;
+					DoAutoSync(striker, true);
+
+					striker = JumpStart.spawnInstance("legacy/v1/models/AirHockey/striker.obj");
+					resetStriker(striker, {side: "b", strikerNumber: 1});
+					g_strikers[1] = striker;
+					striker.userData.lastSyncPos = new THREE.Vector3().copy(striker.position);
+					striker.userData.lastSyncTime = g_clock.elapsedTime;
+					DoAutoSync(striker, true);
+				}
+
+				g_leaderboardRef = JumpStart.firebaseSync.firebaseRoot.child("AirHockeyLeaderboard");
+				g_leaderboardRef.on("value", function(snapshot) 
+				{
+					var leaderboard = snapshot.val();
+					displayLeaderboard(leaderboard);
+				});
+
+				// Start the simulation
+				JumpStart.run();
+			}
+		</script>
+
+		<!-- Custom Object-Level Event Callbacks -->
+		<script>
+			var g_scoreBoardA = null;
+			var g_scoreBoardB = null;
+
+			function resetTick()
+			{
+				if( this.userData.lastNumResets !== this.JumpStart.numResets )
+				{
+					this.userData.lastNumResets = this.JumpStart.numResets;
+					reset(true);
+				}
+			}
+
+			function resetSpawn()
+			{
+				if( !g_resetButton )
+					g_resetButton = this;
+
+				this.userData.lastNumResets = this.JumpStart.numResets;
+
+				g_rayCastObjects.push(this);
+			}
+
+			function strikerSpawn(isLocal)
+			{
+				this.userData.oldScore = 0;
+				this.userData.oldOwnerId = "";
+
+				g_rayCastObjects.push(this);
+
+				if( !isLocal && g_strikers[this.JumpStart.strikerNumber] )
+				{
+					console.log(
+						"APP ERROR: There is already a striker with number " + this.JumpStart.strikerNumber + ".");
+					return;
+				}
+
+				if( !isLocal )
+				{
+					this.userData.lastSyncPos = new THREE.Vector3().copy(this.position);
+					this.userData.lastSyncTime = g_clock.elapsedTime;
+				}
+
+				g_strikers[this.JumpStart.strikerNumber] = this;
+
+				var strikerJS = this.JumpStart;
+				strikerJS.color = new THREE.Color(strikerJS.side === "a" ? "red" : "blue");
+				strikerJS.cloneMaterial();
+				strikerJS.darkerColor = strikerJS.color.clone().offsetHSL(0, 0, -0.2);
+				strikerJS.setColor(strikerJS.ownerId ? strikerJS.color : strikerJS.darkerColor);
+
+				if( g_strikers[0] && g_strikers[1] )
+				{
+					g_ready = true;
+					// Trigger the start game count down!!
+				}
+			}
+
+			function strikerDown()
+			{
+				if( 
+					this.JumpStart.ownerId === "" && g_strikers[0].JumpStart.ownerId !== g_localUser.userId &&
+					g_strikers[1].JumpStart.ownerId !== g_localUser.userId 
+				)
+				{
+					var otherStriker = g_strikers[1];
+					if( this === g_strikers[1] )
+						otherStriker = g_strikers[0];
+
+					this.JumpStart.score = 0;
+					this.JumpStart.displayName = g_localUser.displayName;
+					this.JumpStart.ownerId = g_localUser.userId;
+					this.JumpStart.blocksLOS = false;
+					this.JumpStart.sync();
+
+					if( otherStriker && otherStriker.JumpStart.ownerId === "" )
+					{
+						if( otherStriker.JumpStart.side === "a" && g_scoreBoardA )
+						{
+							g_scene.remove(g_scoreBoardA);
+							g_scoreBoardA = null;
+						}
+						else if( otherStriker.JumpStart.side === "b" && g_scoreBoardB )
+						{
+							g_scene.remove(g_scoreBoardB);
+							g_scoreBoardB = null;
+						}
+					}
+
+					// Add us to the main table too?
+				}
+			}
+
+			function strikerEnter()
+			{
+				if( this.JumpStart.ownerId !== "" )
+					return;
+
+				this.JumpStart.setColor(this.JumpStart.color);
+			}
+
+			function strikerLeave()
+			{
+				if( this.JumpStart.ownerId !== "" )
+					return;
+
+				this.JumpStart.setColor(this.JumpStart.darkerColor);
+			}
+
+			function LoadTextModel(text)
+			{
+				var params = {
+					size: 3.0,
+					height: 0.1,
+					font: "helvetiker",
+					curveSegments: 1
+				};
+
+				var geometry;
+				geometry = new THREE.TextGeometry(text, params);
+
+				var material = new THREE.MeshBasicMaterial({color:"#333333"});
+
+				var mesh = new THREE.Mesh(geometry, material);
+
+				geometry.computeBoundingBox();
+
+				var displacement = new THREE.Vector3().copy(geometry.boundingBox.max).sub(geometry.boundingBox.min);
+
+				JumpStart.models.push({textOffset: displacement, object: mesh, fileName: text, batch: "text"});
+			}
+
+			function spawnText(text, parent)
+			{
+				var textObject = JumpStart.spawnInstance(text, {parent: parent});
+				textObject.JumpStart.blocksLOS = false;
+
+				var offset = new THREE.Vector3();
+				var i;
+				for( i = 0; i < JumpStart.models.length; i++ )
+				{
+					if( JumpStart.models[i].fileName === text )
+					{
+						offset.copy(JumpStart.models[i].textOffset);
+						break;
+					}
+				}
+
+				offset.multiply(textObject.scale);
+				textObject.position.set(-offset.x / 2.0, -offset.y / 2.0, -offset.z / 2.0);
+				return textObject;
+			}
+
+			function spawnScore(score, scoreBoard, jumpStart)
+			{
+				var scoreCached = false;
+				for( var i = 0; i < JumpStart.models.length; i++ )
+				{
+					if( JumpStart.models[i].fileName === score )
+					{
+						scoreCached = true;
+						break;
+					}
+				}
+
+				if( !scoreCached )
+				{
+					LoadTextModel(score);
+				}
+
+				var scoreObject = spawnText(score, scoreBoard);
+
+				if( jumpStart.ownerId !== g_localUser.userId )
+				{
+					scoreObject.translateY(3.0);
+				}
+
+				scoreBoard.userData.scoreObject = scoreObject;
+			}
+
+			function constructScoreBoard() 
+			{
+				var scoreBoard = JumpStart.spawnInstance(null);
+				var scoreFrame = window.scoreFrame = JumpStart.spawnInstance(
+					"legacy/v1/models/AirHockey/scoreframe.obj", {parent: scoreBoard});
+				scoreFrame.name = "scoreFrame";
+				scoreFrame.rotation.y = Math.PI / 2;
+				scoreFrame.scale.set(5, 5.3, 10.1);
+				scoreFrame.position.set(11.5, -2.8, 1);
+
+				var scoreBoardBase = new THREE.Mesh(
+					new THREE.BoxGeometry(2, 1, 0.05),
+					new THREE.MeshBasicMaterial({color: "lightgrey"})
+				);
+				scoreBoardBase.position.z -= 0.3;
+				scoreBoardBase.scale.multiplyScalar(10);
+				scoreBoard.add(scoreBoardBase);
+
+				if( this.JumpStart.ownerId === g_localUser.userId )
+					scoreBoard.rotateY(Math.PI);
+
+				scoreBoard.userData.scoreObject = null;
+
+				var frameColor;
+				if( this.JumpStart.side === "b" )
+				{
+					scoreBoard.position.x = g_tableWidth / 2;
+					scoreBoard.rotateY(Math.PI);
+					scoreFrame.JumpStart.cloneMaterial();
+					frameColor = new THREE.Color("blue");
+					scoreFrame.JumpStart.color = frameColor;
+					scoreFrame.JumpStart.lighterColor = frameColor.clone().offsetHSL(0, 0, 0.3);
+					scoreFrame.JumpStart.setColor(frameColor);
+					g_scoreBoardB = scoreBoard;
+				}
+				else
+				{
+					scoreBoard.position.x = -g_tableWidth / 2;
+					scoreFrame.JumpStart.cloneMaterial();
+					frameColor = new THREE.Color("red");
+					scoreFrame.JumpStart.color = frameColor;
+					scoreFrame.JumpStart.lighterColor = frameColor.clone().offsetHSL(0, 0, 0.3);
+					scoreFrame.JumpStart.setColor(frameColor);
+					g_scoreBoardA = scoreBoard;
+				}
+
+				scoreBoard.position.y = g_worldOffset.y + g_tableHeight * 3 + 5.0;
+				return scoreBoard;
+			}
+
+			function displayLeaderboard(leaderboard)
+			{
+				function $$(context, selector) 
+				{
+					return context.querySelector(selector);
+				}
+
+				var $recentWins = $$(document, "#recentWins");
+				$recentWins.innerHTML ="";
+				var $topWinners = $$(document, "#topWinners");
+				$topWinners.innerHTML ="";
+
+				if( !leaderboard ) 
+					return;
+
+				var recentWinHtml = $$(document, "#recentWinTemplate").innerHTML;
+				leaderboard.recentWins.forEach(function(recentWin)
+				{
+					var $recentWin = document.createElement("tr");
+					$recentWin.innerHTML = recentWinHtml;
+					$$($recentWin, ".recentWinner").textContent = recentWin.winnerName;
+					$$($recentWin, ".scoreDiff").textContent = recentWin.scoreDiff;
+					if( recentWin.scoreDiff === 1 )
+					{
+						$$($recentWin, ".scoreDiffPlural").style.display = "none";
+					}
+					$recentWins.appendChild($recentWin);
+				})
+
+				var topWinnerHtml = $$(document, "#topWinnerTemplate").innerHTML;
+				for( var i = 0; i < 5; i++ ) 
+				{
+					var topWinner = leaderboard.topWinners[i];
+					if( !topWinner ) 
+						break;
+					var $topWinner = document.createElement("tr");
+					$topWinner.innerHTML = topWinnerHtml;
+					$$($topWinner, ".topWinner").textContent = topWinner.displayName;
+					$$($topWinner, ".wins").textContent = topWinner.wins;
+					if( topWinner.wins === 1 )
+						$$($topWinner, ".winsPlural").style.display = "none";
+					$topWinners.appendChild($topWinner);
+				}
+			}
+
+			function recordWinOnLeaderboard()
+			{
+				var strikerZeroLocal = g_strikers[0].JumpStart.ownerId === g_localUser.userId;
+				var otherStriker = strikerZeroLocal ? g_strikers[1] : g_strikers[0];
+				if( !otherStriker.JumpStart.ownerId ) 
+					return;
+
+				var localName = g_localUser.displayName;
+				var localStriker = strikerZeroLocal ? g_strikers[0] : g_strikers[1];
+				var scoreDiff = localStriker.JumpStart.score - otherStriker.JumpStart.score;
+				var localUserId = g_localUser.userId;
+
+				g_leaderboardRef.once("value", function(snapshot) 
+				{
+					var leaderboard = snapshot.val();
+					if( !leaderboard )
+					{
+						leaderboard = {
+							recentWins: [],
+							topWinners: []
+						};
+					}
+
+					leaderboard.recentWins.unshift({
+						winnerName: localName,
+						scoreDiff: scoreDiff
+					});
+					if( leaderboard.recentWins.length > 5 )
+						leaderboard.recentWins.pop();
+
+					var foundTopWinner;
+					leaderboard.topWinners.forEach(function(topWinner) 
+					{
+						if( topWinner.userId == localUserId ) 
+						{
+							topWinner.wins++;
+							topWinner.displayName = localName;
+							foundTopWinner = true;
+						}
+					});
+					if( !foundTopWinner ) 
+					{
+						leaderboard.topWinners.push({
+							userId: localUserId,
+							displayName: localName,
+							wins: 1
+						});
+					}
+
+					leaderboard.topWinners.sort(function(a, b) 
+					{
+						return b.wins - a.wins;
+					});
+
+					g_leaderboardRef.set(leaderboard);
+				})
+			}
+
+			function reconstructScoreBoardIfOwnerChanged(scoreBoard)
+			{
+				if( this.userData.oldOwnerId === this.JumpStart.ownerId ) 
+					return scoreBoard;
+				if( scoreBoard )
+					g_scene.remove(scoreBoard);
+
+				scoreBoard = constructScoreBoard.call(this);
+
+				if( this.JumpStart.ownerId !== g_localUser.userId )
+				{
+					var displayName = this.JumpStart.displayName;
+					LoadTextModel(displayName);
+					var displayNameObject = spawnText(displayName, scoreBoard);
+					displayNameObject.translateY(-1);
+					var displayNameWidth = displayNameObject.geometry.boundingBox.size().x;
+					if ( displayNameWidth > 8 )
+					{
+						displayNameObject.scale.multiplyScalar(16 / displayNameWidth);
+						displayNameObject.position.x = -displayNameWidth / 2 * displayNameObject.scale.x;
+					}
+				}
+
+				spawnScore("0", scoreBoard, this.JumpStart);
+
+				//[...]
+				// 1. create a 3d model of this display name
+				// 2. Spawn it above the player's goal.
+				// 3. create a 3d model of their score (0 - g_winningScore)
+				// 4. Spawn the number next to their name.
+
+				this.userData.oldOwnerId = this.JumpStart.ownerId;
+
+				return scoreBoard; 
+			}
+
+			var g_lastSoundTimestamps = {};
+			function playSoundThrottled(sound, volume, throttle)
+			{
+				if (g_lastSoundTimestamps[sound] && (Date.now() - g_lastSoundTimestamps[sound]) <= throttle) 
+					return;
+				JumpStart.playSound(sound, 0.7, false);
+				g_lastSoundTimestamps[sound] = Date.now();
+			}
+
+			function displayCelebrateAndRecordIfScoreChanged(scoreBoard) 
+			{
+				if( this.userData.oldScore === this.JumpStart.score || !scoreBoard ) 
+					return;
+
+				if( this.JumpStart.score > this.userData.oldScore )
+				{
+					playSoundThrottled("legacy/v1/sounds/AirHockey/score", 0.7, 1000);
+					DoubleRainbow(this.JumpStart.side);
+				}
+
+				if( this.JumpStart.score >= g_winningScore )
+				{
+					playSoundThrottled("legacy/v1/sounds/AirHockey/gameover", 0.7, 1000);
+					if( this.JumpStart.ownerId === g_localUser.userId )
+					{
+						recordWinOnLeaderboard();
+					}
+				}
+
+				scoreBoard.remove(scoreBoard.userData.scoreObject);
+				spawnScore(this.JumpStart.score, scoreBoard, this.JumpStart);
+
+				this.userData.oldScore = this.JumpStart.score;
+			}
+
+			function updateLocalStrikerPositionAndLimitToTable()
+			{
+				if( this.JumpStart.ownerId !== g_localUser.userId ) 
+					return;
+
+				if( g_localUser.lookHit && g_localUser.lookHit.object === g_table )
+				{
+					var updatedPos = new THREE.Vector3().copy(g_localUser.lookHit.scaledPoint);
+
+					var xMax = g_tableWidth / 2.0 - g_puckRadius;
+					var zMax = g_tableLength / 2.0 - g_puckRadius;
+
+					if( updatedPos.x < -xMax )
+						updatedPos.x = -xMax;
+					else if( updatedPos.x > xMax )
+						updatedPos.x = xMax;
+
+					if( updatedPos.z < -zMax )
+						updatedPos.z = -zMax;
+					else if( updatedPos.z > zMax )
+						updatedPos.z = zMax;
+
+					if( !goodSide(this) )
+					{
+						updatedPos.z = this.position.z;
+
+						if( this.JumpStart.side === "a" )
+							g_endLine[1].scale.set(1, 1, 1);
+						else
+							g_endLine[0].scale.set(1, 1, 1);
+					}
+					else
+					{
+						if( this.JumpStart.side === "a" && g_endLine[1].scale.x >= 1 )
+							g_endLine[1].scale.set(0.0001, 0.0001, 0.0001);
+						else if( this.JumpStart.side === "b" && g_endLine[0].scale.x >= 1 )
+							g_endLine[0].scale.set(0.0001, 0.0001, 0.0001);
+					}
+
+					this.position.copy(updatedPos);
+
+					var bShouldForce = false;
+					if( this.JumpStart.offTable )
+					{
+						this.JumpStart.offTable = false;
+						bShouldForce = true;
+					}
+
+					DoAutoSync(this, bShouldForce);
+				}
+				else if( !this.JumpStart.offTable )
+				{
+					this.JumpStart.offTable = true;
+					DoAutoSync(this, true);
+
+					if( this.JumpStart.side === "a" && g_endLine[1].scale.x >= 1 )
+						g_endLine[1].scale.set(0.0001, 0.0001, 0.0001);
+					else if( this.JumpStart.side === "b" && g_endLine[0].scale.x >= 1 )
+						g_endLine[0].scale.set(0.0001, 0.0001, 0.0001);
+				}
+			}
+
+			function strikerTick()
+			{
+				var scoreBoard;
+				if( this.JumpStart.side === "a" )
+					scoreBoard = g_scoreBoardA;
+				else
+					scoreBoard = g_scoreBoardB;
+
+				scoreBoard = reconstructScoreBoardIfOwnerChanged.call(this, scoreBoard);
+
+				displayCelebrateAndRecordIfScoreChanged.call(this, scoreBoard);
+
+				if( !this.JumpStart.offTable )
+					this.scale.set(1.0, 1.0, 1.0);
+				else
+					this.scale.set(0.0001, 0.0001, 0.0001);
+
+				if( this.JumpStart.ownerId !== g_localUser.userId )
+				{
+					// LERP if this is other striker
+					doRotationLerp.call(this);
+					doPositionLerp.call(this);
+					return;
+				}
+
+				updateLocalStrikerPositionAndLimitToTable.call(this);
+			}
+
+			function goodSide(object)
+			{
+				if( object.JumpStart.side === "a" )
+				{
+					return g_lookHit && g_lookHit.scaledPoint.z <= 20.0;
+				}
+				else
+				{
+					return g_lookHit && g_lookHit.scaledPoint.z >= -20.0;
+				}
+			}
+
+			function Goal(side)
+			{
+				g_puck.userData.delayLife = 2.5;
+
+				var striker, scoreBoard;
+				if( side === "a" )
+				{
+					striker = g_strikers[0];
+					scoreBoard = g_scoreBoardA;
+				}
+				else
+				{
+					striker = g_strikers[1];
+					scoreBoard = g_scoreBoardB;
+				}
+
+				if( !scoreBoard ) 
+					return;
+
+				var flashCounter = 0;
+				var scoreFrame = scoreBoard.getObjectByName("scoreFrame");
+				var flashId = setInterval(function()
+				{
+					var color = flashCounter % 2 ? scoreFrame.JumpStart.color : scoreFrame.JumpStart.lighterColor;
+					scoreFrame.JumpStart.setColor(color);
+					if( flashCounter++ === 5 )
+					{
+						clearInterval(flashId);
+					}
+				}, 200);
+
+				striker.JumpStart.score++;
+				DoAutoSync(striker, true);
+			}
+
+			function playRandomHitSound(speed)
+			{
+				var hitSounds = [
+					"legacy/v1/sounds/AirHockey/hit1",
+					"legacy/v1/sounds/AirHockey/hit2",
+					"legacy/v1/sounds/AirHockey/hit3"
+				];
+				var volume = THREE.Math.clamp(speed, 0.8, 5) / 5;
+				JumpStart.playSound(hitSounds[Math.floor(Math.random() * 3)], volume);
+			}
+
+			function puckTick()
+			{
+				this.position.y = g_worldOffset.y + g_tableHeight;
+				this.JumpStart.velocity.y = 0.0;
+
+				this.userData.hitResting -= g_deltaTime;
+
+				if( this.userData.hitResting < 0 )
+					this.userData.hitResting = 0;
+
+				this.JumpStart.velocity.multiplyScalar(1.0 - (g_deltaTime / 2.0));
+
+				var xMax = g_tableWidth / 2.0 - g_puckRadius;
+				var zMax = g_tableLength / 2.0 - g_puckRadius;
+
+				if( this.position.x < -xMax )
+				{
+					this.position.x = -xMax;
+					this.JumpStart.velocity.x = -this.JumpStart.velocity.x;
+					playRandomHitSound(this.JumpStart.velocity.lengthSq());
+				}
+				else if( this.position.x > xMax )
+				{
+					this.position.x = xMax;
+					this.JumpStart.velocity.x = -this.JumpStart.velocity.x;
+					playRandomHitSound(this.JumpStart.velocity.lengthSq());
+				}
+
+				if( this.position.z < -zMax )
+				{
+					// DID WE SCORE?!
+					// Check if x is between a and b.
+					// If it is, let it fly a bit longer.
+
+					if( this.position.x > -10 && this.position.x < 10 )
+					{
+						if( this.position.z < -zMax - 2.0 )
+						{
+							Goal("b");
+							this.position.z = -zMax - 2.0;
+							this.JumpStart.onTick = {};
+							this.JumpStart.onTick["scoredTick"] = scoredTick;
+							this.JumpStart.makeStatic();
+							this.JumpStart.sync();
+						}
+					}
+					else
+					{
+						this.position.z = -zMax;
+						this.JumpStart.velocity.z = -this.JumpStart.velocity.z;
+						playRandomHitSound(this.JumpStart.velocity.lengthSq());
+					}
+				}
+				else if( this.position.z > zMax )
+				{
+					if( this.position.x > -10 && this.position.x < 10 )
+					{
+						if( this.position.z > zMax + 2.0 )
+						{
+							Goal("a");
+							this.position.z = zMax + 2.0;
+							this.JumpStart.onTick = {};
+							this.JumpStart.onTick["scoredTick"] = scoredTick;
+							this.JumpStart.makeStatic();
+							this.JumpStart.sync();
+						}
+					}
+					else
+					{
+						this.position.z = zMax;
+						this.JumpStart.velocity.z = -this.JumpStart.velocity.z;
+						playRandomHitSound(this.JumpStart.velocity.lengthSq());
+					}
+				}
+
+				var wasHit = false;
+				if(
+					g_ready && (
+						g_strikers[0].JumpStart.ownerId === g_localUser.userId ||
+						g_strikers[1].JumpStart.ownerId === g_localUser.userId
+					) &&
+					!this.userData.hitResting && g_lookHit && g_lookHit.object === g_table 
+				)
+				{
+					var hisPuck = g_strikers[0];
+					if( hisPuck.JumpStart.ownerId !== g_localUser.userId )
+						hisPuck = g_strikers[1];
+
+					var dist = g_lookHit.scaledPoint.distanceTo(this.position);
+
+					// BASED ON INSTANTANEOUS LOOKHIT VELOCITY
+					var puckOffset = new THREE.Vector3().
+						copy(g_lookHit.scaledPoint).sub(g_lastLookHitScaledPoint).multiplyScalar(3.0);
+
+					var puckOffsetLength = puckOffset.length();
+
+					if( puckOffsetLength > g_maxPuckOffset )
+						puckOffset.multiplyScalar(g_maxPuckOffset / puckOffsetLength);
+
+					// Should also ignore hits that go in the WRONG direction for this player.
+					if( dist < this.userData.radius && goodSide(hisPuck) )	
+					{
+						this.JumpStart.appliedForce.copy(puckOffset);
+
+						this.JumpStart.ownerId = g_localUser.userId;
+						this.userData.hitResting = 0.5;
+						this.JumpStart.sync();
+						wasHit = true;
+						playRandomHitSound(this.JumpStart.velocity.lengthSq());
+					}
+
+					this.userData.lastPuckOffset.copy(puckOffset);
+				}
+
+				if( !wasHit && this.JumpStart.velocity.length() < 0.1 )
+				{
+					if( this.JumpStart.ownerId === g_localUser.userId )
+					{
+						this.JumpStart.applyForce(new THREE.Vector3(0, 0, 0));
+						this.JumpStart.ownerId = "";
+						this.JumpStart.sync();
+					}
+					else
+						this.JumpStart.velocity.set(0, 0, 0);
+				}
+
+				if( g_lookHit )
+					g_lastLookHitScaledPoint.copy(g_lookHit.scaledPoint);
+			}
+
+			function scoredTick()
+			{
+				if( this.JumpStart.ownerId === g_localUser.userId )
+				{
+					this.userData.delayLife -= g_deltaTime;
+
+					if( this.userData.delayLife <= 0 )
+					{
+						this.userData.delayLife = 0.0;
+						this.JumpStart.onTick = {};
+						this.JumpStart.onTick["puckTick"] = puckTick;
+						this.JumpStart.makePhysics();
+						this.JumpStart.freefallRot.set(0, 0, 0);
+						this.position.x = 0.0;
+						this.position.z = 0.0;
+						this.JumpStart.sync();
+					}
+				}
+			}
+
+			function puckSpawn(isLocal)
+			{
+				if( g_puck && !isLocal )
+				{
+					console.log("APP ERROR: Puck already exists on local client.");
+					return;
+				}
+				else
+					console.log("Puck spawned.");
+
+				this.userData.radius = 6.0;
+				this.userData.hitResting = 0;
+				this.userData.lastPuckOffset = new THREE.Vector3();
+
+				g_puck = this;
+
+				g_table = JumpStart.spawnCursorPlane({
+					"position": new THREE.Vector3(0, g_tableHeight, 0),
+					"rotate": new THREE.Vector3(Math.PI / 2.0, 0, 0),
+					"width": g_tableWidth + 100,
+					"height": g_tableLength + 100
+				});
+
+				g_table.position.y = g_worldOffset.y + g_tableHeight;
+
+				g_rayCastObjects.push(g_table);
+
+				var tableModel = JumpStart.spawnInstance("legacy/v1/models/AirHockey/table.obj", {"parent": g_table});
+				tableModel.position.z += 0.1;
+				tableModel.JumpStart.blocksLOS = false;
+				tableModel.rotateX(-Math.PI / 2.0);
+
+				// Make the endlines
+				var endLine = new THREE.Mesh(
+							new THREE.BoxGeometry(g_tableWidth, 1.0, 0.1),
+							new THREE.MeshBasicMaterial( { color: "#5555ff", transparent: true, opacity: 0.5, visible: true })
+						);
+				g_table.add(endLine);
+				endLine.translateY(-20.0);
+				endLine.scale.set(0.0001, 0.0001, 0.0001);
+				g_endLine.push(endLine);
+
+				endLine = new THREE.Mesh(
+							new THREE.BoxGeometry(g_tableWidth, 1.0, 0.1),
+							new THREE.MeshBasicMaterial( { color: "#ff5555", transparent: true, opacity: 0.5, visible: true })
+						);
+				g_table.add(endLine);
+				endLine.translateY(20.0);
+				endLine.scale.set(0.0001, 0.0001, 0.0001);
+				g_endLine.push(endLine);
+			}
+
+			function RainbowBeam(yaw, zOrigin, pixelModelName, beamIndex, side)
+			{
+				var beam = JumpStart.spawnInstance(pixelModelName);
+				beam.position.copy(g_puck.position);
+				beam.position.z = zOrigin;
+				beam.rotation.y = yaw;
+				beam.userData.origin = new THREE.Vector3().copy(beam.position);
+				beam.userData.direction = 1.0;
+				beam.userData.beamIndex = beamIndex;
+				beam.userData.side = side;
+
+				beam.JumpStart.onTick = function()
+				{
+					
+					this.translateZ(-300.0 * g_deltaTime * this.userData.direction);
+
+					if( (this.userData.side === "a" && (this.position.z < g_table.position.z + (-zOrigin)
+						|| this.position.x > g_table.position.x + g_tableWidth / 2.0
+						|| this.position.x < g_table.position.x - g_tableWidth / 2.0)) ||
+						(this.userData.side === "b" && (this.position.z > g_table.position.z + (-zOrigin)
+						|| this.position.x > g_table.position.x + g_tableWidth / 2.0
+						|| this.position.x < g_table.position.x - g_tableWidth / 2.0)) )
+					{
+						this.userData.direction = -1.0;
+
+						var nextIndex = null;
+						if( this.userData.beamIndex <= 7.0 )
+						{
+							if( this.userData.beamIndex === 0.0 )
+								return;
+							else
+								nextIndex = this.userData.beamIndex - 1;
+						}
+						else if( this.userData.beamIndex <= 15.0 )
+						{
+							if( this.userData.beamIndex <= 9.0 )
+								return;
+							else
+								nextIndex = this.userData.beamIndex - 1;
+						}
+
+						if( nextIndex !== null && !this.userData.alreadyGeneratedBeam )
+						{
+							this.userData.alreadyGeneratedBeam = true;
+							GenerateBeam(this.userData.side, nextIndex);
+						}
+
+						return;
+					}
+
+					if( this.userData.direction < 0 && ((this.userData.side === "a" && this.position.z > this.userData.origin.z)
+						|| (this.userData.side === "b" && this.position.z < this.userData.origin.z)) )
+					{
+						g_scene.remove(this);
+						return;
+					}
+
+					var dist = beam.position.distanceTo(this.userData.origin) * 2.0;
+					this.scale.z = THREE.Math.clamp(dist, 0.0001, dist);
+				};
+			}
+
+			function GenerateBeam(side, beamIndex)
+			{
+				var zMax = (g_tableLength / 2.0 - g_puckRadius) + 4.0;
+				var zMin = -zMax;
+
+				var yaw = 0;
+				var zOrigin = zMax;
+				var pixelModelName = "legacy/v1/models/AirHockey/pixel2.obj";
+				if( side !== "a" )
+				{
+					yaw = Math.PI;
+					zOrigin = zMin;
+					pixelModelName = "legacy/v1/models/AirHockey/pixel1.obj";
+				}
+
+				var divisions = 8.0;
+				var amt = (Math.PI / 2.0) / divisions;
+
+				var adjustedYAW, sign, adjustedI;
+				if( beamIndex < divisions )
+				{
+					sign = -1.0;
+					adjustedI = beamIndex;
+				}
+				else
+				{
+					sign = 1.0;
+					adjustedI = beamIndex - divisions;
+				}
+
+				adjustedYAW = yaw + amt * (adjustedI * 1.0) * sign;
+				RainbowBeam(adjustedYAW, zOrigin, pixelModelName, beamIndex, side);
+			}
+
+			function DoubleRainbow(side)
+			{
+				// Now do stuff
+				GenerateBeam(side, 7.0);
+				GenerateBeam(side, 15.0);
+			}
+
+			function DoAutoSync(sceneObject, forceSync)
+			{
+				if( 
+					(typeof forceSync !== "undefined" && forceSync) ||
+					(
+						sceneObject.position.distanceTo(sceneObject.userData.lastSyncPos) > 5.0 &&
+						g_clock.elapsedTime - sceneObject.userData.lastSyncTime > 0.1
+					) 
+				)
+				{
+					sceneObject.userData.lastSyncPos.copy(sceneObject.position);
+					sceneObject.userData.lastSyncTime = g_clock.elapsedTime;
+
+					sceneObject.JumpStart.sync();
+				}
+			}
+
+			function doPositionLerp()
+			{
+				if( this.userData.hasOwnProperty("targetPosLerp") && this.userData.targetPosLerp < 1.0 )
+				{
+					this.userData.targetPosLerp += (1.0/this.userData.targetPosLerpTime) * g_deltaTime;
+
+					var justFinished = false;
+					if( this.userData.targetPosLerp >= 1.0 )
+					{
+						this.userData.targetPosLerp = 1.0;
+						justFinished = true;
+					}
+
+					this.position.lerpVectors(
+						this.userData.targetPosOriginal, this.userData.targetPos, this.userData.targetPosLerp);
+
+					if( justFinished )
+					{
+						if( typeof this.userData.targetPosCallback === "function" )
+							this.userData.targetPosCallback.call(this);
+
+						this.userData.targetPosCallback = null;
+
+						if( this.userData.hasOwnProperty("targetPosAnim") && this.userData.targetPosAnim.length > 0 )
+						{
+							var nextTarget = this.userData.targetPosAnim.shift();
+							if( !nextTarget.targetPosOriginal )
+								nextTarget.targetPosOriginal = new THREE.Vector3().copy(this.position);
+
+							// Set our new targets.
+							this.userData.targetPos.copy(nextTarget.targetPos);
+							this.userData.targetPosOriginal.copy(nextTarget.targetPosOriginal);
+							this.userData.targetPosLerp = nextTarget.targetPosLerp;
+							this.userData.targetPosLerpTime = nextTarget.targetPosLerpTime;
+							if( typeof nextTarget.targetPosCallback === "function" )
+								this.userData.targetPosCallback = nextTarget.targetPosCallback;
+						}
+					}
+				}
+			}
+
+			function doRotationLerp()
+			{
+				if( this.userData.hasOwnProperty("targetRotLerp") && this.userData.targetRotLerp < 1.0 )
+				{
+					this.userData.targetRotLerp += (1.0/this.userData.targetRotLerpTime) * g_deltaTime;
+
+					var justFinished = false;
+					if( this.userData.targetRotLerp >= 1.0 )
+					{
+						this.userData.targetRotLerp = 1.0;
+						justFinished = true;
+					}
+
+					var myQuaternionA = new THREE.Quaternion().setFromEuler(
+						new THREE.Euler().setFromVector3(this.userData.targetRotOriginal, "XYZ"));
+					var myQuaternionB = new THREE.Quaternion().setFromEuler(
+						new THREE.Euler().setFromVector3(this.userData.targetRot, "XYZ"));
+
+					myQuaternionA.slerp(myQuaternionB, this.userData.targetRotLerp);
+					this.quaternion.copy(myQuaternionA);
+
+					if( justFinished )
+					{
+						if( this.userData.hasOwnProperty("targetRotAnim") && this.userData.targetRotAnim.length > 0 )
+						{
+							var nextTarget = this.userData.targetRotAnim.shift();
+							if( !nextTarget.targetRotOriginal )
+								nextTarget.targetRotOriginal = new THREE.Vector3().copy(this.rotation);
+
+							// Set our new targets.
+							this.userData.targetRot.copy(nextTarget.targetRot);
+							this.userData.targetRotOriginal.copy(nextTarget.targetRotOriginal);
+							this.userData.targetRotLerp = nextTarget.targetRotLerp;
+							this.userData.targetRotLerpTime = nextTarget.targetRotLerpTime;
+						}
+					}
+				}
+			}
+
+			if( JumpStart.webMode )
+			{
+				document.body.addEventListener("keydown", function(e)
+				{
+					if( e.keyCode === 83 )
+						g_camera.translateZ(20);
+					else if( e.keyCode === 87 )
+						g_camera.translateZ(-20);
+					else if( e.keyCode === 65 )
+						g_camera.translateX(-20);
+					else if( e.keyCode === 68 )
+						g_camera.translateX(20);
+				});
+			}
+		</script>
+	</body>
+</html>

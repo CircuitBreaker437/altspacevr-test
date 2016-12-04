@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Hover Blaster</title>
+		<script src="engine/misc/appMenu.js"></script>
+		<script src="engine/misc/JumpStart.js"></script>
+		<script src="assets/HoverBlaster/misc/hoverBlasterTable.js"></script>
+
+		<script>
+			loadJumpStart({
+				"appID": "HoverBlaster",
+				"multiuserOnly": true,
+				"enclosureOnly": true,
+				"sceneScale": 1.0,
+				"scaleWithEnclosure": false,
+				"camera":
+				{
+					"position": {"x": 0.0, "y": 250.0, "z": 250.0}
+				},
+				"debug": {"showCursorPlanes": false}
+			});
+			
+			jumpStart.addEventListener("precache", function()
+			{
+				// true	: SYNCHRONOUS
+				// false: ASYNCHRONOUS (must call JumpStart.doneCaching)
+				return true;
+			});
+
+			jumpStart.addEventListener("initialize", function()
+			{
+				//spawnHoverBlasterTable(new THREE.Vector3(), new THREE.Quaternion());
+				//spawnHoverBlasterPlaceholder(new THREE.Vector3(), new THREE.Quaternion());
+				return true;
+			});
+
+			// webmode userlist
+			if( !jumpStart.isAltspace )
+			{
+				jumpStart.addEventListener("userdisconnect", function(e)
+				{
+					var playersContainer = document.getElementById("players").getElementsByClassName("playersContainer")[0];
+					if( !!!playersContainer )
+						return;
+
+					var divs = playersContainer.getElementsByTagName("div");
+					var i;
+					for( i = 0; i < divs.length; i++ )
+					{
+						if( divs[i].playerId === e.id )
+						{
+							playersContainer.removeChild(divs[i]);
+							break;
+						}
+					}
+				});
+
+				jumpStart.addEventListener("userconnect", function(e)
+				{
+					var playersContainer = document.getElementById("players").getElementsByClassName("playersContainer")[0];
+					if( !!!playersContainer )
+						return;
+
+					var playerSlate = document.createElement("div");
+					playerSlate.playerId = e.id;
+					if( e.displayName === "WebUser" )
+						playerSlate.innerHTML = e.id;
+					else
+						playerSlate.innerHTML = e.displayName;
+
+					playersContainer.appendChild(playerSlate);
+				});
+			}
+
+			var popup;
+			jumpStart.addEventListener("ready", function()
+			{
+				var buttonFrame = jumpStart.spawnInstance(null);
+				//buttonFrame.position.x += 200 * Math.random();
+				//buttonFrame.position.x *= (Math.random() > 0.5) ? 1.0 : -1.0;
+				buttonFrame.scale.set(0.0001, 0.0001, 0.0001);
+				buttonFrame.applyBehavior("asyncModel", {
+					"modelFile": "engine/models/gameButtonFrame",
+					"useBubbleIn": false,
+					"callback": function(visualObject)
+					{
+						visualObject.setColor(new THREE.Color("#cccccc"));
+
+						var button = jumpStart.spawnInstance(null, {"parent": this});
+						button.position.y += 4.0;
+						button.applyBehavior("asyncModel", {
+							"modelFile": "engine/models/gameButton",
+							"useBubbleIn": false,
+							"callback": function(visualObject)
+							{
+								visualObject.userData.doubleClickTimer = 0;
+
+								this.setColor(new THREE.Color("#99ccff"));
+
+								var buttonFrame = this.parent;
+								buttonFrame.scale.set(1, 1, 1);
+								buttonFrame.applyBehavior("bubbleIn", {"speed": 6.0});
+
+								visualObject.blocksLOS = true;
+								jumpStart.makeCollide(visualObject);
+
+								function tickUp()
+								{
+									if( this.scale.x < 1 )
+										this.scale.multiplyScalar(1.2);
+
+									if( this.scale.x >= 1 )
+										this.scale.set(1, 1, 1);
+								}
+
+								function tickDown()
+								{
+									if( this.scale.x > 0.0001 )
+										this.scale.multiplyScalar(0.8);
+
+									if( this.scale.x <= 0.0001 )
+										this.scale.set(0.0001, 0.0001, 0.0001);
+								}
+
+								visualObject.addEventListener("cursorenter", function()
+								{
+									this.parent.parent.setColor(new THREE.Color("#ffffff"));
+									this.parent.parent.userData.playArea.removeEventListener("tick", tickDown);
+
+									if( this.parent.parent.userData.playArea.scale.x < 0.1 )
+										this.parent.parent.userData.playArea.scale.set(0.1, 0.1, 0.1);
+									this.parent.parent.userData.playArea.addEventListener("tick", tickUp);
+								});
+
+								visualObject.addEventListener("cursorexit", function()
+								{
+									this.parent.parent.setColor(new THREE.Color("#cccccc"));
+									this.setColor(new THREE.Color("#99ccff"));
+									this.parent.parent.userData.playArea.removeEventListener("tick", tickUp);
+									this.parent.parent.userData.playArea.addEventListener("tick", tickDown);
+								});
+
+								visualObject.addEventListener("cursordown", function()
+								{
+									var parentObject = this.parent.parent;
+									if( parentObject.ownerID !== jumpStart.localUser.userID )
+										return;
+
+									// dbl click behavior
+									if( this.userData.doubleClickTimer === 0 )
+									{
+										this.userData.doubleClickTimer = 0.3;
+
+										this.addEventListener("tick", function()
+										{
+											if( this.userData.doubleClickTimer === 0 )
+											{
+												this.removeEventListener("tick", arguments.callee);
+												return;
+											}
+
+											this.userData.doubleClickTimer -= jumpStart.deltaTime;
+
+											var gamepadRequiredObject = jumpStart.scene.getObjectByName("gamepadRequired");
+
+											if( this.userData.doubleClickTimer <= 0 && !!!gamepadRequiredObject )
+											{
+												this.userData.doubleClickTimer = 0;
+
+												var doubleClickRequiredObject = jumpStart.scene.getObjectByName("doubleClickRequired");
+
+												if( !!!doubleClickRequiredObject )
+												{
+													var parentObject = this.parent.parent;
+													var imageFile = "assets/RCDM/misc/doubleclickrequired.png";
+													var x, imageMaterial, imageGeometry, imagePlane;
+													var imageMaterial = new THREE.MeshBasicMaterial({map: THREE.ImageUtils.loadTexture(imageFile), transparent: true, opacity: 1.0});
+													var imageGeometry = new THREE.PlaneGeometry(100, 32, 1 , 1);
+													var imagePlane = new THREE.Mesh(imageGeometry, imageMaterial);
+													var imageObject = jumpStart.spawnInstance(null, {"object": imagePlane});
+													imageObject.name = "doubleClickRequired";
+													imageObject.position.copy(parentObject.position);
+													imageObject.position.y += 50.0;
+													imageObject.userData.lifeLeft = 2.0;
+													imageObject.userData.parentObject = parentObject;
+													imageObject.applyBehavior("bubbleIn", {"speed": 6.0});
+
+													function getEyePos()
+													{
+														var pos;
+														if( jumpStart.isAltspace )
+															pos = jumpStart.localUser.skeleton.getJoint("Eye").getWorldPosition();
+														else
+															pos = jumpStart.camera.position.clone();
+														
+														jumpStart.world.worldToLocal(pos);
+														return pos;
+														//victim.lookAt(pos);
+													}
+													imageObject.lookAt(getEyePos());
+													imageObject.translateZ(1.0);
+
+													imageObject.addEventListener("tick", function()
+													{
+														var parentObject = this.userData.parentObject;
+														this.position.copy(parentObject.position);
+														this.position.y += 50.0;
+
+														if( this.userData.lifeLeft > 0 )
+														{
+															this.userData.lifeLeft -= jumpStart.deltaTime;
+
+															if( this.userData.lifeLeft <= 0 )
+															{
+																this.applyBehavior("shrinkRemove");
+																//this.removeEventListener("tick", arguments.callee);
+															}
+														}
+
+														var oldQuaternion = this.quaternion.clone();
+														this.lookAt(getEyePos());
+														var targetQuaternion = this.quaternion.clone();
+														this.quaternion.copy(oldQuaternion);
+														this.quaternion.slerp(targetQuaternion, 0.05);
+														this.translateZ(1.0);
+													});
+												}
+
+												this.removeEventListener("tick", arguments.callee);
+												return;
+											}
+										});
+										return;
+									}
+
+									this.userData.doubleClickTimer = 0;
+
+									var doubleClickRequiredObject = jumpStart.scene.getObjectByName("doubleClickRequired");
+									if( !!doubleClickRequiredObject )
+									{
+										if( !!!doubleClickRequiredObject.behaviors.shrinkRemove )
+										{
+											doubleClickRequiredObject.applyBehavior("shrinkRemove");
+											doubleClickRequiredObject.userData.lifeLeft = 0;
+										}
+									}
+
+									// gamepad required behavior
+									var gamepadRequiredObject = jumpStart.scene.getObjectByName("gamepadRequired");
+									if( !!!jumpStart.gamepad )
+									{
+										if( !!!gamepadRequiredObject )
+										{
+											var imageFile = "assets/RCDM/misc/gamepadrequired.png";
+											var x, imageMaterial, imageGeometry, imagePlane;
+											var imageMaterial = new THREE.MeshBasicMaterial({map: THREE.ImageUtils.loadTexture(imageFile), transparent: true, opacity: 1.0});
+											var imageGeometry = new THREE.PlaneGeometry(100, 32, 1 , 1);
+											var imagePlane = new THREE.Mesh(imageGeometry, imageMaterial);
+											var imageObject = jumpStart.spawnInstance(null, {"object": imagePlane});
+											imageObject.name = "gamepadRequired";
+											imageObject.position.copy(parentObject.position);
+											imageObject.position.y += 50.0;
+											imageObject.userData.lifeLeft = 3.0;
+											imageObject.userData.parentObject = parentObject;
+											imageObject.applyBehavior("bubbleIn", {"speed": 4.0});
+
+											function getEyePos()
+											{
+												var pos;
+												if( jumpStart.isAltspace )
+													pos = jumpStart.localUser.skeleton.getJoint("Eye").getWorldPosition();
+												else
+													pos = jumpStart.camera.position.clone();
+												
+												jumpStart.world.worldToLocal(pos);
+												return pos;
+												//victim.lookAt(pos);
+											}
+											imageObject.lookAt(getEyePos());
+											imageObject.translateZ(2.0);
+
+											imageObject.addEventListener("tick", function()
+											{
+												var parentObject = this.userData.parentObject;
+												this.position.copy(parentObject.position);
+												this.position.y += 50.0;
+
+												if( this.userData.lifeLeft > 0 )
+												{
+													this.userData.lifeLeft -= jumpStart.deltaTime;
+
+													if( this.userData.lifeLeft <= 0 )
+													{
+														this.applyBehavior("shrinkRemove");
+														//this.removeEventListener("tick", arguments.callee);
+													}
+												}
+
+												var oldQuaternion = this.quaternion.clone();
+												this.lookAt(getEyePos());
+												var targetQuaternion = this.quaternion.clone();
+												this.quaternion.copy(oldQuaternion);
+												this.quaternion.slerp(targetQuaternion, 0.05);
+												this.translateZ(2.0);
+											});
+										}
+
+										return;
+									}
+									else if( !!gamepadRequiredObject )
+									{
+										if( !!!gamepadRequiredObject.behaviors.shrinkRemove )
+										{
+											gamepadRequiredObject.applyBehavior("shrinkRemove");
+											gamepadRequiredObject.userData.lifeLeft = 0;
+										}
+									}
+
+									jumpStart.behaviors.hoverBlasterTable.createTable(buttonFrame.position.clone(), buttonFrame.quaternion.clone());
+								});
+							}.bind(button)
+						});
+					}.bind(buttonFrame)
+				});
+
+				var playArea = jumpStart.spawnInstance(null);
+				playArea.applyBehavior("asyncModel", {"modelFile": "models/playarea"});
+				playArea.position.copy(buttonFrame.position);
+				playArea.quaternion.copy(buttonFrame.quaternion);
+				playArea.scale.set(0.0001, 0.0001, 0.0001);
+				playArea.userData.originalPosition = playArea.position.clone();
+				buttonFrame.userData.playArea = playArea;
+				playArea.addEventListener("tick", function()
+				{
+					var pos;
+					if( jumpStart.isAltspace )
+						pos = jumpStart.localUser.skeleton.getJoint("Eye").getWorldPosition();
+					else
+						pos = jumpStart.camera.position.clone();
+					jumpStart.world.worldToLocal(pos);
+					pos.y = this.position.y;
+
+					this.position.copy(this.userData.originalPosition);
+					this.lookAt(pos);
+					this.translateZ(150.0);
+				});
+
+				//buttonFrame.rotateX(-Math.PI / 2.0);
+
+				if( jumpStart.isAltspace )
+				{
+					window.altspace.open("http://www.jumpstartsdk.com/live/assets/HoverBlaster/misc/menu.html", "_experience", {"hidden": true, "icon": "http://www.jumpstartsdk.com/live/assets/HoverBlaster/misc/menuicon.png"}).then(function(_popup)
+						{
+							popup = _popup;
+						});
+				}
+
+				return true;
+			});
+
+		</script>
+	</head>
+
+	<body style="background-color: transparent;">
+		<!--<iframe id="music" style="display: none;"></iframe>-->
+
+		<script>
+var ytplayerready = false;
+
+  </script>
+  <div id="players" style="display: none; position: absolute; top: 0; right: 0; border: 2px solid #000; background-color: rgba(0, 0, 150, 0.3); font-weight: bold; font-size: 30px;">
+  	Players:<br />
+  	<div class="playersContainer">
+  	</div>
+  </div>
+
+    <div id="player" width="100%" height="100%" style="width: 100%; height: 100%; z-index: -1; position: absolute; top: 0; left: 0; display: none;"></div>
+
+    <script>
+    if( !jumpStart.isAltspace )
+    {
+    	document.getElementById("player").style.display = "block";
+    	document.getElementById("players").style.display = "block";
+      // 2. This code loads the IFrame Player API code asynchronously.
+      var tag = document.createElement('script');
+
+      tag.src = "https://www.youtube.com/iframe_api";
+      var firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+      // 3. This function creates an <iframe> (and YouTube player)
+      //    after the API code downloads.
+  	}
+     // var player;
+      function onYouTubeIframeAPIReady() {
+        var player = new YT.Player('player', {
+          height: '100%',
+          width: '100%',
+          videoId: "tdnKOnSdGbc",
+          iv_load_policy: 3,
+          suggestedQuality: 'hd720',
+          events: {
+            'onReady': onPlayerReady,
+            'onStateChange': onPlayerStateChange
+          },
+          playerVars: {
+            enablejsapi : 1,
+            iv_load_policy: 3,
+            loop : 1,
+            playlist: "tdnKOnSdGbc",
+          	controls: 0,
+          	showinfo: 0
+          }
+        });
+      }
+//&vq=" + vq + "&iv_load_policy=3&enablejsapi=1&autoplay=1&playerapiid=ytplayer&version=3",
+      // 4. The API will call this function when the video player is ready.
+      function onPlayerReady(event) {
+        event.target.playVideo();
+      }
+
+      // 5. The API calls this function when the player's state changes.
+      //    The function indicates that when playing a video (state=1),
+      //    the player should play for six seconds and then stop.
+    //  var done = false;
+      function onPlayerStateChange(event) {
+     //   if (event.data == YT.PlayerState.PLAYING && !done) {
+       //   setTimeout(stopVideo, 6000);
+      //    done = true;
+    //    }
+      }
+      function stopVideo() {
+        player.stopVideo();
+      }
+    </script>
+	</body>
+</html>

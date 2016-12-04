@@ -1,0 +1,1445 @@
+<!-- Powered by the JumpStart Game Engine -->
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Tiki Drum</title>
+		<script src="engine/misc/appMenu.js"></script>
+
+		<script src="http://sdk.altvr.com/libs/three.js/r73/build/three.min.js"></script>
+		<script src="http://sdk.altvr.com/libs/three.js/r71/examples/js/loaders/OBJMTLLoader.js"></script>
+		<script src="http://sdk.altvr.com/libs/three.js/r71/examples/js/loaders/MTLLoader.js"></script>
+		<script src="http://sdk.altvr.com/libs/altspace.js/latest/altspace.min.js"></script>
+
+		<script src="http://sdk.altvr.com/libs/three.js/r73/examples/js/geometries/TextGeometry.js"></script>
+		<script src="http://sdk.altvr.com/libs/three.js/r73/examples/js/utils/FontUtils.js"></script>
+		<script src="http://sdk.altvr.com/libs/three.js/r73/examples/fonts/helvetiker_regular.typeface.js"></script>
+
+		<!-- JumpStart SDK Additional Includes -->
+		<script src="legacy/v1/FirebaseSync.js"></script>
+		<script src="legacy/v1/AltOBJMTLLoader.js"></script>
+
+		<!-- JumpStart Styles -->
+		<link rel="stylesheet" type="text/css" href="legacy/v1/myStyle.css">
+
+		<!-- Custom App Includes -->
+		<script src="legacy/v1/SeamlessLoop.js"></script>
+	</head>
+
+	<body>
+
+		<style>
+			#highscores
+			{
+				font-family: Arial;
+				font-size: 40px;
+				font-weight: bold;
+			}
+
+			#highscores td
+			{
+				padding-left: 20px;
+				padding-right: 20px;
+			}
+		</style>
+
+		<div id="gearSlate" style="display: none;">
+		<div style="position: absolute; top: 0; left: 0; right: 0;">
+		<center>
+			<br /><br /><br /><br />
+			<div><table id="highscores"></table></div>
+		</center>
+		</div>
+
+		<div id="scores" style="position: fixed; display: none; text-align: right; top: 0; right: 0;"><div id="ball">&nbsp;</div><br /></div>
+		</div>
+
+		<!-- JumpStart SDK Core Include -->
+		<script src="legacy/v1/JumpStart.js"></script>
+
+		<!-- Window-Level Event Callbacks -->
+		<script>
+			var myOptions =
+			{
+				"showFPS": false,
+				"legacyLoader": false,
+				"worldScale": 2.0,
+				"scaleWithEnclosure": true,
+				"showCursorPlanes": false,
+				"showCrosshair": false,
+				"camera":
+				{
+					"lookAtOrigin": true,
+					"position": new THREE.Vector3(-5.0, 10.0, 30.0),
+					"translation": new THREE.Vector3(40.0, 30.0, 180.0)
+				},
+				"firebase":
+				{
+					"rootUrl": "https://tikidrum.firebaseio.com/",
+					"appId": "TikiDrum",
+					"params": { "AUTOSYNC": false },
+					"suppressPersonalBrowser": true
+				}
+			};
+
+			JumpStart.setOptions(myOptions);
+
+			var g_globalBall = null;
+			var g_myDrum = null;
+			var g_myBall = null;
+			var g_myBallShadow = null;
+			var scoreBoard = document.getElementById("scores");
+			var beatLoop = null;
+			var g_timeScale = 1.0;
+
+			if( g_isGear )
+				g_timeScale = g_timeScale * 0.5;
+
+			var g_rayCastObjects = new Array();
+
+			function onPrecache()
+			{
+//				var allDataRef = JumpStart.firebaseSync.firebaseRoot;
+//				allDataRef.remove();
+//				return;
+
+				if( JumpStart.personalBrowser || !JumpStart.requestedRoomId )
+				{
+					JumpStart.doneCaching();
+					return;
+				}
+
+				// Precache anything that your app needs.
+				var myModels = [
+					"legacy/v1/models/TikiDrum/drum.obj",
+					"legacy/v1/models/TikiDrum/hoop.obj",
+					"legacy/v1/models/TikiDrum/face.obj",
+					"legacy/v1/models/TikiDrum/ball.obj",
+					"legacy/v1/models/TikiDrum/explosion.obj",
+					"legacy/v1/models/TikiDrum/pixel2.obj"
+				];
+
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/beat");
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/cymb0");
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/cymb1");
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/cymb2");
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/cymb3");
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/cymb4");
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/cymb5");
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/cymb6");
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/cymb7");
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/cymb8");
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/cymb9");
+				JumpStart.precacheSound("legacy/v1/sounds/TikiDrum/cymb10");
+
+				var params = {
+					size: 10.0,
+					height: 1,
+					font: "helvetiker",
+					curveSegments: 1
+				};
+
+				var geometry;
+//				if( JumpStart.webMode )
+					geometry = new THREE.TextGeometry("Please Wait", params);
+//				else
+//					geometry = new THREE.TextGeometry("Please Wait");
+
+				var material = new THREE.MeshBasicMaterial({color:'white'});
+				var pleaseWait = new THREE.Mesh(geometry, material);
+
+				geometry.computeBoundingBox();
+
+				var displacement = new THREE.Vector3().copy(geometry.boundingBox.max).sub(geometry.boundingBox.min);
+
+				// Make JumpStart think that it is pre-cached.
+				JumpStart.models.push({textOffset: displacement, object: pleaseWait, fileName: "Please Wait", batch: "text"});
+
+//				if( JumpStart.webMode )
+					geometry = new THREE.TextGeometry("Click to Join", params);
+//				else
+//					geometry = new THREE.TextGeometry("Click to Join");
+
+				var material = new THREE.MeshBasicMaterial({color:'white'});
+				var clickToJoin = new THREE.Mesh(geometry, material);
+
+				geometry.computeBoundingBox();
+
+				displacement = new THREE.Vector3().copy(geometry.boundingBox.max).sub(geometry.boundingBox.min);
+
+				// Make JumpStart think that it is pre-cached.
+				JumpStart.models.push({textOffset: displacement, object: clickToJoin, fileName: "Click to Join", batch: "text"});
+
+				JumpStart.loadModels(myModels).then(function() {
+
+					// Finally call JumpStart.doneCaching() to signify you are done.
+					// Your onReady global function wll be called next.
+					JumpStart.doneCaching();
+				});
+			}
+
+			var g_pleaseWait = null;
+			var g_clickToJoin = null;
+
+			function onReady()
+			{
+				var jumpStartAppMenu = new JumpStartAppMenu("TikiDrum", "http://www.jumpstartsdk.com/live/TikiDrum.html", g_scene);
+
+				// Do nothing if we are not in an enclosure yet.
+				if( !JumpStart.requestedRoomId )
+					return;
+
+				if( JumpStart.personalBrowser )
+				{
+					var loadingRingElem = document.getElementById("loadingRing");
+					if( loadingRingElem )
+					{
+						loadingRingElem.parentNode.removeChild(loadingRingElem);
+					}
+
+					var loadingLogoElem = document.getElementById("loadingLogo");
+					if( loadingLogoElem )
+					{
+						loadingLogoElem.src = "legacy/v1/misc/beamnow.png";
+					}
+
+					JumpStart.showLoadingMsg("Loading complete.<br /><br /><font style='color: #00ff00; font-size: 30px; background-color: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 10px;'>Beam this app to an enclosure to begin!</font>");
+					return;
+				}
+
+				if( !g_isGear )
+				{
+					document.getElementById("gearSlate").style.display = "block";
+				}
+
+//				if( !JumpStart.webMode )
+//					g_timeScale = 0.7;
+
+				// The first user
+				if( g_localUser.firstUser )
+				{
+
+				}
+
+				g_pleaseWait = JumpStart.spawnInstance(null);
+				g_pleaseWait.userData.hidden = false;
+				g_pleaseWait.JumpStart.blocksLOS = false;
+				g_pleaseWait.rotateX(-Math.PI / 2.0);
+				g_pleaseWait.JumpStart.onTick = function()
+				{
+					if( !g_myDrum )
+						return;
+
+					if( !g_myDrum.userData.pleaseWait )
+					{
+						if( !this.userData.hidden )
+						{
+							this.userData.hidden = true;
+							this.scale.set(0.0001, 0.0001, 0.0001);
+						}
+					}
+					else
+					{
+						if( this.userData.hidden )
+							this.userData.hidden = false;
+
+						this.scale.copy(g_myDrum.scale);
+						this.position.copy(g_myDrum.position);
+						this.translateY(-25.0);
+					}
+				}
+
+				var text = JumpStart.spawnInstance("Please Wait", {parent: g_pleaseWait});
+
+				if( !JumpStart.webMode )
+				{
+					text.scale.z = 0.1;
+					text.scale.multiplyScalar(0.1);
+				}
+
+				//geometry.computeBoundingBox();
+				var offset = new THREE.Vector3();
+				var i;
+				for( i = 0; i < JumpStart.models.length; i++ )
+				{
+					if( JumpStart.models[i].fileName === "Please Wait" )
+					{
+						offset.copy(JumpStart.models[i].textOffset);
+						break;
+					}
+				}
+
+				offset.multiply(text.scale);
+				text.position.set(-offset.x / 2.0, -offset.y / 2.0, -offset.z / 2.0);
+
+				g_clickToJoin = JumpStart.spawnInstance(null);
+				g_clickToJoin.userData.hidden = false;
+				g_clickToJoin.JumpStart.blocksLOS = false;
+				g_clickToJoin.rotateX(-Math.PI / 2.0);
+				g_clickToJoin.JumpStart.onTick = function()
+				{
+					if( !g_myDrum )
+						return;
+
+					if( g_myDrum.userData.pleaseWait || (beatLoop &&
+						g_highScores && (g_highScores.JumpStart.scores["player1"] === g_localUser.displayName ||
+							g_highScores.JumpStart.scores["player2"] === g_localUser.displayName)) )
+					{
+						if( !this.userData.hidden )
+						{
+							this.userData.hidden = true;
+
+							g_myDrum.JumpStart.clickToJoin = false;
+							//g_myDrum.JumpStart.sync();
+							DoAutoSync(g_myDrum, true);
+
+							this.scale.set(0.0001, 0.0001, 0.0001);
+						}
+					}
+					else
+					{
+						if( this.userData.hidden )
+						{
+							this.userData.hidden = false;
+
+							g_myDrum.JumpStart.clickToJoin = false;
+							DoAutoSync(g_myDrum, true);
+							//g_myDrum.JumpStart.sync();
+						}
+
+						this.scale.copy(g_myDrum.scale);
+						this.position.copy(g_myDrum.position);
+						this.translateY(-25.0);
+					}
+				}
+
+				text = JumpStart.spawnInstance("Click to Join", {parent: g_clickToJoin});
+
+//				if( !JumpStart.webMode )
+//				{
+//					text.scale.z = 0.1;
+//					text.scale.multiplyScalar(0.1);
+//				}
+
+				//geometry.computeBoundingBox();
+
+				offset = new THREE.Vector3();
+				for( i = 0; i < JumpStart.models.length; i++ )
+				{
+					if( JumpStart.models[i].fileName === "Click to Join" )
+					{
+						offset.copy(JumpStart.models[i].textOffset);
+						break;
+					}
+				}
+
+				offset.multiply(text.scale);
+				text.position.set(-offset.x / 2.0, -offset.y / 2.0, -offset.z / 2.0);
+
+				setTimeout(function()
+				{
+					// START SIMULATION
+					JumpStart.run();
+
+					if( !g_myDrum )
+					{
+						g_myDrum = JumpStart.spawnInstance("legacy/v1/models/TikiDrum/drum.obj");
+						g_myDrum.JumpStart.ownerName = g_localUser.displayName;
+//						g_myDrum.JumpStart.pleaseWait = false;
+//						g_myDrum.JumpStart.clickToJoin = false;
+						g_myDrum.JumpStart.lerpSync = true;
+						g_myDrum.JumpStart.owner = g_localUser.displayName;
+						g_myDrum.JumpStart.score = 0;
+						g_myDrum.JumpStart.bestScore = 0;
+						g_myDrum.userData.lastSyncPos = new THREE.Vector3().copy(g_myDrum.position);
+						g_myDrum.userData.lastSyncTime = g_clock.elapsedTime;
+
+						g_myDrum.JumpStart.onSpawn["drumSpawn"] = drumSpawn;
+
+						g_myDrum.JumpStart.onTick["drumTick"] = drumTick;
+
+						if( !g_highScores )
+						{
+							g_myDrum.JumpStart.pleaseWait = false;
+							g_myDrum.JumpStart.clickToJoin = true;
+						}
+						else if( g_highScores.JumpStart.scores["player1"] === g_localUser.displayName || g_highScores.JumpStart.scores["player2"] === g_localUser.displayName )
+						{
+							g_myDrum.JumpStart.pleaseWait = false;
+							g_myDrum.JumpStart.clickToJoin = false;
+						}
+						else if( g_highScores.JumpStart.scores["player1"] === "OPEN" || g_highScores.JumpStart.scores["player2"] === "OPEN" )
+						{
+							g_myDrum.JumpStart.pleaseWait = false;
+							g_myDrum.JumpStart.clickToJoin = true;	
+						}
+
+//						g_myDrum.userData.lastSyncPos = new THREE.Vector3().copy(g_myDrum.position);
+//						g_myDrum.userData.lastSyncTime = g_clock.elapsedTime;
+
+						//g_myDrum.JumpStart.sync();
+						DoAutoSync(g_myDrum, true);
+					}
+
+					if( !g_globalBall )
+					{
+						g_myBall = JumpStart.spawnInstance("legacy/v1/models/TikiDrum/ball.obj", {parent: g_myDrum});
+						g_myBall.JumpStart.score = 0;
+						g_myBall.JumpStart.blocksLOS = false;
+						g_myBall.position.y += 100.0;
+
+						addTikiBallChildren(g_myBall);
+						//g_myBall.scale.multiplyScalar(0.5);
+					}
+
+					// Ball shadow.
+					g_myBallShadow = JumpStart.spawnInstance("legacy/v1/models/TikiDrum/explosion.obj");
+					g_myBallShadow.scale.y = 0.01;
+					g_myBallShadow.JumpStart.blocksLOS = false;
+
+					g_myBallShadow.JumpStart.onTick = function()
+					{
+						if( !g_globalBall )
+						{
+							this.scale.set(0.0001, 0.0001, 0.0001);
+							return;
+						}
+
+						this.position.copy(g_globalBall.position);
+						this.position.y = g_worldOffset.y;
+
+						var min = 1.0;
+						var max = 10.0;
+
+						// Make some adjustments if running inside of Altspace
+//						if( !JumpStart.webMode )
+//							max = 15.0;
+
+						var shadowScale = this.position.distanceTo(g_globalBall.position) / 20.0;
+						shadowScale = (shadowScale - max) / (max - min);
+
+						g_myBallShadow.scale.set(shadowScale, 0.01, shadowScale);
+					};
+				}, 2000);
+
+				g_rayCastObjects.push(JumpStart.floorPlane);
+//				rayCastObjects.push(JumpStart.roofPlane);
+//				g_rayCastObjects.push(JumpStart.westPlane);
+//				g_rayCastObjects.push(JumpStart.northPlane);
+//				g_rayCastObjects.push(JumpStart.eastPlane);
+//				g_rayCastObjects.push(JumpStart.southPlane);
+
+				// START SIMULATION
+			//	JumpStart.run();
+			}
+
+			function onTick()
+			{
+				if( g_localUser && g_localUser.lookOrigin && g_localUser.lookOrigin.z < 0 && (!document.body.hasOwnProperty("mirrored") || !document.body.mirrored) )
+				{
+					document.body.style.webkitTransform = "scaleX(-1)";
+					document.body.style.filter = "FlipH";
+					document.body.mirrored = true;
+				}
+				else if( g_localUser.lookOrigin.z >= 0 && document.body.hasOwnProperty("mirrored") && document.body.mirrored )
+				{
+					document.body.style.webkitTransform = "none";
+					document.body.style.filter = "none";
+					document.body.mirrored = false;
+				}
+			}
+		</script>
+
+		<!-- Custom Object-Level Event Callbacks -->
+		<script>
+			function DoAutoSync(sceneObject, forceSync)
+			{
+				if( (typeof forceSync !== "undefined" && forceSync) || (sceneObject.position.distanceTo(sceneObject.userData.lastSyncPos) > 5.0 && g_clock.elapsedTime - sceneObject.userData.lastSyncTime > 0.1) )
+				{
+//					if( (typeof forceSync === "undefined" || !forceSync) && g_myDrum && sceneObject === g_myDrum && (!g_clickToJoin.userData.hidden || !g_pleaseWait.userData.hidden) )
+//						return;
+
+					if( typeof forceSync !== "undefined" && !forceSync && g_myDrum && g_myDrum === sceneObject && (g_myDrum.JumpStart.pleaseWait || g_myDrum.JumpStart.clickToJoin) )
+						return;
+
+					sceneObject.userData.lastSyncPos.copy(sceneObject.position);
+					sceneObject.userData.lastSyncTime = g_clock.elapsedTime;
+
+					sceneObject.JumpStart.sync();
+				}
+			}
+
+			function onCursorDown()
+			{
+				if( !g_myDrum )
+					return;
+
+				var oldThis = g_myDrum;
+
+				var needSync = false;
+				if( g_myBall && oldThis.children.indexOf(g_myBall) >= 0 )
+				{
+					g_globalBall = g_myBall;
+					g_myBall = null;
+
+					var pos = new THREE.Vector3();
+					if( !JumpStart.webMode )
+							pos.copy(g_globalBall.position);
+
+					THREE.SceneUtils.detach(g_globalBall, oldThis, g_scene);
+
+					// Do some adjustments if we are rendering inside of Altspace
+					if( !JumpStart.webMode )
+					{
+						g_globalBall.scale.copy(oldThis.scale);
+						g_globalBall.position.copy(oldThis.position);
+						g_globalBall.rotation.copy(oldThis.rotation);
+
+						g_globalBall.translateX(pos.x);
+						g_globalBall.translateY(pos.y);
+						g_globalBall.translateZ(pos.z);
+					}
+
+					g_globalBall.JumpStart.makePhysics();
+					g_globalBall.JumpStart.onTick["ballin"] = ballin;
+					g_globalBall.JumpStart.onSpawn["globalBallSpawned"] = globalBallSpawned;
+					g_globalBall.JumpStart.owner = g_localUser.displayName;
+					g_globalBall.JumpStart.sync();
+
+					if( oldThis.JumpStart.score > oldThis.JumpStart.bestScore )
+						oldThis.JumpStart.bestScore = oldThis.JumpStart.score;
+
+					g_myDrum.JumpStart.pleaseWait = false;
+					g_myDrum.JumpStart.clickToJoin = false;
+					g_myDrum.JumpStart.score = 0;
+
+					needSync = true;
+					//oldThis.JumpStart.sync();
+				}
+				else if( g_globalBall && g_globalBall.position.y - g_worldOffset.y < 20 + 0.5 && g_globalBall.position.y - g_worldOffset.y > 20 - 0.5 )
+				{
+					g_globalBall.position.copy(oldThis.position);
+					g_globalBall.position.y = g_worldOffset.y + 150;
+
+					g_globalBall.JumpStart.makePhysics();
+					g_globalBall.JumpStart.score = 0;
+					g_globalBall.JumpStart.owner = g_localUser.displayName;
+					g_globalBall.JumpStart.sync();
+
+					if( oldThis.JumpStart.score > oldThis.JumpStart.bestScore )
+						oldThis.JumpStart.bestScore = oldThis.JumpStart.score;
+
+					g_myDrum.JumpStart.clickToJoin = false;
+					g_myDrum.JumpStart.pleaseWait = false;
+					g_myDrum.JumpStart.score = 0;
+
+					needSync = true;
+					//oldThis.JumpStart.sync();
+				}
+				//else if( g_myDrum.JumpStart.clickToJoin )
+				else if( !g_clickToJoin.userData.hidden )
+				{
+					g_myDrum.JumpStart.clickToJoin = false;
+					g_myDrum.JumpStart.pleaseWait = false;
+					g_myDrum.JumpStart.score = 0;
+					needSync = true;
+				}
+
+				if( needSync )
+				{
+					// High scores
+					if( !g_highScores )
+					{
+						g_highScores = JumpStart.spawnInstance("legacy/v1/models/TikiDrum/pixel2.obj");
+						g_highScores.JumpStart.blocksLOS = false;
+						g_highScores.scale.set(0.0001, 0.0001, 0.0001);
+						g_highScores.position.set(0, -100.0, 0);
+						g_highScores.JumpStart.onSpawn["highScores"] = highScores;
+						g_highScores.JumpStart.scores = {};
+
+						g_highScores.JumpStart.scores["player1"] = g_localUser.displayName;
+						g_highScores.JumpStart.scores["player2"] = "OPEN";
+						g_highScores.JumpStart.sync();
+					}
+					else if( g_highScores.JumpStart.scores["player1"] !== g_localUser.displayName && g_highScores.JumpStart.scores["player2"] !== g_localUser.displayName)
+					{
+						if( g_highScores.JumpStart.scores["player1"] === "OPEN" )
+							g_highScores.JumpStart.scores["player1"] = g_localUser.displayName;
+						else if( g_highScores.JumpStart.scores["player2"] === "OPEN" )
+							g_highScores.JumpStart.scores["player2"] = g_localUser.displayName;
+//								else
+//									return;
+
+						g_highScores.JumpStart.sync();
+					}
+
+					//oldThis.JumpStart.sync();
+					DoAutoSync(g_myDrum, true);
+				}
+			}
+
+			function drumSpawn()
+			{
+				this.JumpStart.blocksLOS = false;
+				this.userData.lastScore = 0;
+				this.userData.hideMeScale = 1.0;
+
+				if( this.JumpStart.owner === g_localUser.displayName )
+				{
+					this.scale.set(1, 1, 1);
+
+					this.userData.scoreReset = true;
+
+					if( !g_myDrum )
+					{
+						g_myDrum = this;
+						g_myDrum.JumpStart.ownerName = g_localUser.displayName;
+
+						if( !g_highScores )
+						{
+							g_myDrum.JumpStart.pleaseWait = false;
+							g_myDrum.JumpStart.clickToJoin = true;
+						}
+						else if( g_highScores.JumpStart.scores["player1"] === g_localUser.displayName || g_highScores.JumpStart.scores["player2"] === g_localUser.displayName )
+						{
+							g_myDrum.JumpStart.pleaseWait = false;
+							g_myDrum.JumpStart.clickToJoin = false;
+						}
+						else if( g_highScores.JumpStart.scores["player1"] === "OPEN" || g_highScores.JumpStart.scores["player2"] === "OPEN" )
+						{
+							g_myDrum.JumpStart.pleaseWait = false;
+							g_myDrum.JumpStart.clickToJoin = true;	
+						}
+
+						g_myDrum.userData.lastSyncPos = new THREE.Vector3().copy(g_myDrum.position);
+						g_myDrum.userData.lastSyncTime = g_clock.elapsedTime;
+
+						//g_myDrum.JumpStart.sync();
+						DoAutoSync(g_myDrum, true);
+					}
+
+					// Drum shadow.
+					var drumShadow = JumpStart.spawnInstance("legacy/v1/models/TikiDrum/explosion.obj", {parent: this});
+					drumShadow.scale.y = 0.01;
+					drumShadow.JumpStart.blocksLOS = false;
+
+					drumShadow.scale.x = 0.8;
+					drumShadow.scale.z = 0.8;
+/*
+					this.JumpStart.onCursorDown = function()
+					{
+
+					};
+*/
+				}
+				else
+				{
+					var drumName = JumpStart.spawnInstance(null, {parent: this});
+					drumName.JumpStart.blocksLOS = false;
+					drumName.rotateX(-Math.PI / 2.0);
+					drumName.translateY(-20);
+
+					var params = {
+						size: 10.0,
+						height: 1,
+						font: "helvetiker",
+						curveSegments: 1
+					};
+
+					var geometry;
+//					if( JumpStart.webMode )
+						geometry = new THREE.TextGeometry(this.JumpStart.ownerName, params);
+//					else
+//						geometry = new THREE.TextGeometry(this.JumpStart.ownerName);
+
+					var material = new THREE.MeshBasicMaterial({color:'white'});
+					var pleaseWait = new THREE.Mesh(geometry, material);
+
+					geometry.computeBoundingBox();
+
+					var displacement = new THREE.Vector3().copy(geometry.boundingBox.max).sub(geometry.boundingBox.min);
+
+					// Make JumpStart think that it is pre-cached.
+					JumpStart.models.push({textOffset: displacement, object: pleaseWait, fileName: this.JumpStart.ownerName, batch: "text"});
+
+					var text = JumpStart.spawnInstance(this.JumpStart.ownerName, {parent: drumName});
+
+//					if( !JumpStart.webMode )
+//					{
+//						text.scale.z = 0.1;
+//						text.scale.multiplyScalar(0.1);
+//					}
+
+					var offset = new THREE.Vector3().copy(displacement);
+
+					offset.multiply(text.scale);
+					text.position.set(-offset.x / 2.0, -offset.y / 2.0, -offset.z / 2.0);
+
+					this.userData.hideMe = true;
+					this.userData.hideMeScale = 0.0;
+					this.scale.set(0.0001, 0.0001, 0.0001);
+				}
+			}
+
+			function drumTick()
+			{
+				if( this === g_myDrum )
+				{
+					if( !this.userData.hasOwnProperty("instantVel") )
+						this.userData.instantVel = new THREE.Vector3();
+
+					this.userData.instantVel.copy(g_crosshair.position);
+					this.userData.instantVel.sub(this.position);
+					this.userData.instantVel.y = 0.0;
+
+					this.position.copy(g_crosshair.position);
+					this.position.y = g_worldOffset.y;
+
+					// If we are hide-scaling, then clear any animations.
+					if( this.userData.hasOwnProperty("hideMeScale") && this.userData.hideMeScale < 1.0 && this.userData.hasOwnProperty("targetScaleLerp") )
+						delete this.userData.targetScaleLerp;
+
+					if( this.userData.hasOwnProperty("targetScaleLerp") && this.userData.targetScaleLerp < 1.0 )
+					{
+						this.userData.targetScaleLerp += (1.0/this.userData.targetScaleLerpTime) * g_deltaTime;
+
+						var justFinished = false;
+						if( this.userData.targetScaleLerp >= 1.0 )
+						{
+							this.userData.targetScaleLerp = 1.0;
+							justFinished = true;
+						}
+
+						this.scale.lerpVectors(this.userData.targetScaleOriginal, this.userData.targetScale, this.userData.targetScaleLerp);
+
+						if( justFinished )
+						{
+							if( this.userData.hasOwnProperty("targetScaleAnim") && this.userData.targetScaleAnim.length > 0 )
+							{
+								var nextTarget = this.userData.targetScaleAnim.shift();
+								if( !nextTarget.targetScaleOriginal )
+									nextTarget.targetScaleOriginal = new THREE.Vector3().copy(this.scale);
+
+								// Set our new targets.
+								g_myDrum.userData.targetScale.copy(nextTarget.targetScale);
+								g_myDrum.userData.targetScaleOriginal.copy(nextTarget.targetScaleOriginal);
+								g_myDrum.userData.targetScaleLerp = nextTarget.targetScaleLerp;
+								g_myDrum.userData.targetScaleLerpTime = nextTarget.targetScaleLerpTime;
+							}
+						}
+					}
+
+					// Sync our drum position to everybody else.
+					//if( !g_pleaseWait || !g_clickToJoin || (!g_pleaseWait.userData.hidden && !g_clickToJoin.userData.hidden) )
+					//if( !this.JumpStart.pleaseWait && (!g_clickToJoin || !g_clickToJoin.userData.hidden))
+						DoAutoSync(this);
+				}
+				else
+				{
+					// LERP us if we are not our own drum!
+					doScaleLerp.call(this);
+					doRotationLerp.call(this);
+					doPositionLerp.call(this);
+				}
+
+				if( !this.userData.hasOwnProperty("lastMoved") )
+					this.userData.lastMoved = g_clock.elapsedTime;
+				if( !this.userData.hasOwnProperty("lastMovedPos") )
+					this.userData.lastMovedPos = new THREE.Vector3();
+
+				if( !this.userData.lastMovedPos.equals(this.position) )
+				{
+			//		this.userData.hideMe = false;
+					if( this.userData.hasOwnProperty("hideMe") )
+					{
+						delete this.userData.hideMe;
+						this.userData.hideMeScale = 0.0;
+					}
+
+					this.userData.lastMovedPos.copy(this.position);
+					this.userData.lastMoved = g_clock.elapsedTime;
+				}
+
+
+				if( g_clock.elapsedTime - this.userData.lastMoved > 3.0 )
+				{
+					if( !this.userData.hasOwnProperty("hideMe") )
+					{
+						this.userData.oldScale = new THREE.Vector3().copy(this.scale);
+
+						this.userData.hideMe = true;
+						this.userData.hideMeScale = 1.0;
+					}
+				}
+
+				if( this.userData.hasOwnProperty("hideMe") )
+				{
+					if( this.userData.hideMe && this.userData.hideMeScale > 0.0 )
+					{
+						this.userData.hideMeScale -= 10.0 * g_deltaTime;
+
+						if( this.userData.hideMeScale < 0.0 )
+							this.userData.hideMeScale = 0.0;
+
+						/*
+						if( this.userData.hideMeScale === 0.0 )
+						{
+							// Just reached min-scale.
+						}
+						*/
+
+						this.scale.set(1.0, 1.0, 1.0).multiplyScalar(this.userData.hideMeScale);
+					}
+			/*		else
+					{
+						this.scale.set(1.0, 1.0, 1.0);
+						delete this.userData.hideMe;
+					}*/
+				}
+				else if( this.userData.hideMeScale < 1.0 )
+				{
+					this.userData.hideMeScale += 10.0 * g_deltaTime;
+
+					if( this.userData.hideMeScale > 1.0 )
+						this.userData.hideMeScale = 1.0;
+
+					/*
+					if( this.userData.hideMeScale === 1.0 )
+					{
+						// Just reached full-scale!
+					}
+					*/
+
+					this.scale.set(1.0, 1.0, 1.0).multiplyScalar(this.userData.hideMeScale);
+				}
+
+				// Scores
+				if( this.userData.lastScore !== this.JumpStart.score && !g_isGear )
+				{
+					var elem = scoreBoard.querySelector("#p" + this.JumpStart.owner);
+					if( !elem )
+					{
+						elem = document.createElement("div");
+						elem.id = "p" + this.JumpStart.owner;
+						scoreBoard.appendChild(elem);
+					}
+
+					elem.innerHTML = "<h2>" + this.JumpStart.owner + ": " + this.JumpStart.score + "</h1>";
+					this.userData.lastScore = this.JumpStart.score;
+				}
+			}
+
+			function doScaleLerp()
+			{
+				if( this.userData.hasOwnProperty("targetScaleLerp") && this.userData.targetScaleLerp < 1.0 )
+				{
+					this.userData.targetScaleLerp += (1.0/this.userData.targetScaleLerpTime) * g_deltaTime;
+
+					var justFinished = false;
+					if( this.userData.targetScaleLerp >= 1.0 )
+					{
+						this.userData.targetScaleLerp = 1.0;
+						justFinished = true;
+					}
+
+					this.scale.lerpVectors(this.userData.targetScaleOriginal, this.userData.targetScale, this.userData.targetScaleLerp);
+
+					if( justFinished )
+					{
+						if( this.userData.hasOwnProperty("targetScaleAnim") && this.userData.targetScaleAnim.length > 0 )
+						{
+							var nextTarget = this.userData.targetScaleAnim.shift();
+							if( !nextTarget.targetScaleOriginal )
+								nextTarget.targetScaleOriginal = new THREE.Vector3().copy(this.scale);
+
+							// Set our new targets.
+							this.userData.targetScale.copy(nextTarget.targetScale);
+							this.userData.targetScaleOriginal.copy(nextTarget.targetScaleOriginal);
+							this.userData.targetScaleLerp = nextTarget.targetScaleLerp;
+							this.userData.targetScaleLerpTime = nextTarget.targetScaleLerpTime;
+						}
+					}
+				}
+			}
+
+			function doPositionLerp()
+			{
+				if( this.userData.hasOwnProperty("targetPosLerp") && this.userData.targetPosLerp < 1.0 )
+				{
+					this.userData.targetPosLerp += (1.0/this.userData.targetPosLerpTime) * g_deltaTime;
+
+					var justFinished = false;
+					if( this.userData.targetPosLerp >= 1.0 )
+					{
+						this.userData.targetPosLerp = 1.0;
+						justFinished = true;
+					}
+
+					this.position.lerpVectors(this.userData.targetPosOriginal, this.userData.targetPos, this.userData.targetPosLerp);
+
+					if( justFinished )
+					{
+						if( typeof this.userData.targetPosCallback === "function" )
+							this.userData.targetPosCallback.call(this);
+
+						this.userData.targetPosCallback = null;
+
+						if( this.userData.hasOwnProperty("targetPosAnim") && this.userData.targetPosAnim.length > 0 )
+						{
+							var nextTarget = this.userData.targetPosAnim.shift();
+							if( !nextTarget.targetPosOriginal )
+								nextTarget.targetPosOriginal = new THREE.Vector3().copy(this.position);
+
+							// Set our new targets.
+							this.userData.targetPos.copy(nextTarget.targetPos);
+							this.userData.targetPosOriginal.copy(nextTarget.targetPosOriginal);
+							this.userData.targetPosLerp = nextTarget.targetPosLerp;
+							this.userData.targetPosLerpTime = nextTarget.targetPosLerpTime;
+							if( typeof nextTarget.targetPosCallback === "function" )
+								this.userData.targetPosCallback = nextTarget.targetPosCallback;
+						}
+					}
+				}
+			}
+
+			function doRotationLerp()
+			{
+				if( this.userData.hasOwnProperty("targetRotLerp") && this.userData.targetRotLerp < 1.0 )
+				{
+					this.userData.targetRotLerp += (1.0/this.userData.targetRotLerpTime) * g_deltaTime;
+
+					var justFinished = false;
+					if( this.userData.targetRotLerp >= 1.0 )
+					{
+						this.userData.targetRotLerp = 1.0;
+						justFinished = true;
+					}
+
+					var myQuaternionA = new THREE.Quaternion().setFromEuler(new THREE.Euler().setFromVector3(this.userData.targetRotOriginal, 'XYZ'));
+					var myQuaternionB = new THREE.Quaternion().setFromEuler(new THREE.Euler().setFromVector3(this.userData.targetRot, 'XYZ'));
+
+					myQuaternionA.slerp(myQuaternionB, this.userData.targetRotLerp);
+					this.quaternion.copy(myQuaternionA);
+			//		this.rotation.lerpVectors(this.userData.targetRotOriginal, this.userData.targetRot, this.userData.targetRotLerp);
+
+					if( justFinished )
+					{
+						if( this.userData.hasOwnProperty("targetRotAnim") && this.userData.targetRotAnim.length > 0 )
+						{
+							var nextTarget = this.userData.targetRotAnim.shift();
+							if( !nextTarget.targetRotOriginal )
+								nextTarget.targetRotOriginal = new THREE.Vector3().copy(this.rotation);
+
+							// Set our new targets.
+							this.userData.targetRot.copy(nextTarget.targetRot);
+							this.userData.targetRotOriginal.copy(nextTarget.targetRotOriginal);
+							this.userData.targetRotLerp = nextTarget.targetRotLerp;
+							this.userData.targetRotLerpTime = nextTarget.targetRotLerpTime;
+						}
+					}
+				}
+			}
+
+			function addTikiBallChildren(ball)
+			{
+				// Spawn hoop children
+				var face0 = JumpStart.spawnInstance("legacy/v1/models/TikiDrum/face.obj", {parent: ball});
+				face0.JumpStart.blocksLOS = false;
+
+				var face1 = JumpStart.spawnInstance("legacy/v1/models/TikiDrum/face.obj", {parent: ball});
+				face1.JumpStart.blocksLOS = false;
+				face1.rotateY(Math.PI);
+
+				var hoop0 = JumpStart.spawnInstance("legacy/v1/models/TikiDrum/hoop.obj", {parent: ball});
+				hoop0.JumpStart.blocksLOS = false;
+				
+				var hoop1 = JumpStart.spawnInstance("legacy/v1/models/TikiDrum/hoop.obj", {parent: ball});
+				hoop1.JumpStart.blocksLOS = false;
+				hoop1.rotateY(Math.PI / 3.3);
+				hoop1.rotateZ(Math.PI / 20.0)
+
+				var hoop2 = JumpStart.spawnInstance("legacy/v1/models/TikiDrum/hoop.obj", {parent: ball});
+				hoop2.JumpStart.blocksLOS = false;
+				hoop2.rotateY(Math.PI / 1.5);
+				hoop2.rotateZ(Math.PI / 20.0);
+			}
+
+			function globalBallSpawned(isLocal, isInitial)
+			{
+				if( this === g_myBall )
+					return;
+
+				g_globalBall = this;
+				g_globalBall.JumpStart.blocksLOS = false;
+				g_globalBall.userData.lastScore = 0;
+
+				addTikiBallChildren(g_globalBall);
+
+				if( g_myBall )
+				{
+					if( g_myDrum.children.indexOf(g_myBall) >= 0 )
+						g_myDrum.remove(g_myBall);
+					else
+						g_scene.remove(g_myBall);
+
+					g_myBall = null;
+				}
+			}
+
+			function ballin()
+			{
+				if( !g_myDrum )
+					return;
+
+				// Is the ball over the drum?
+				var ballPos = new THREE.Vector3().copy(this.position);
+				ballPos.y = 0.0;
+
+				var drumPos = new THREE.Vector3();
+
+				drumPos = new THREE.Vector3().copy(g_myDrum.position);
+				drumPos.y = 0.0;
+
+				var drumCollision = false;
+				var zMin;
+				if( ballPos.distanceTo(drumPos) < 30.0 && (!g_myDrum.userData.hasOwnProperty("hideMe") || !g_myDrum.userData.hideMe) && !g_myDrum.JumpStart.pleaseWait && !g_myDrum.JumpStart.clickToJoin )
+				{
+					zMin = g_worldOffset.y + 40.0;
+					drumCollision = true;
+				}
+				else
+					zMin = g_worldOffset.y + 20;
+
+				if( this.position.y <= zMin )
+				{
+					var oldY = this.position.y;
+					this.position.y = zMin;
+
+					var exitVel = new THREE.Vector3();
+
+					if( drumCollision && (!g_myDrum.userData.hasOwnProperty("hideMe") || !g_myDrum.userData.hideMe) )
+					{
+						//console.log("Drum collision!");
+						if( this.JumpStart.hasOwnProperty("velocity") )
+							this.JumpStart.velocity.y = 0.0;
+
+						exitVel.copy(this.position);
+						exitVel.sub(g_myDrum.position);
+						exitVel.z *= 0.5;
+						exitVel.x *= 0.5;
+
+						if( this.JumpStart.hasOwnProperty("velocity") )
+							exitVel.add(this.JumpStart.velocity);
+
+						if( !this.userData.hasOwnProperty("velocity") )
+							this.userData.velocity = new THREE.Vector3();
+
+						this.userData.velocity.set(0, 0, 0);
+
+						exitVel.multiplyScalar(0.07);
+
+						var amp = new THREE.Vector3().copy(g_myDrum.userData.instantVel);
+						if( oldY < zMin )
+							amp.multiplyScalar(0.2);
+						else
+							amp.multiplyScalar(0.1);
+
+			//			if( amp.length() < 1.0 )
+			//				amp.set(0, 0, 0);
+
+						if( amp.length() > 5.0 )
+							amp.normalize().multiplyScalar(5.0);
+
+						exitVel.add(amp);
+
+						exitVel.multiplyScalar(2.0);
+
+						if( this.JumpStart.physicsState === 0 )
+							this.JumpStart.score = 0;
+
+						this.JumpStart.applyForce(exitVel);
+						//this.JumpStart.velocity.set(0, 0, 0);
+						//console.log(this.JumpStart.appliedForce);
+						this.JumpStart.freefallRot = new THREE.Vector3((Math.PI / 2.0) * Math.random(), (Math.PI / 2.0) * Math.random(), (Math.PI / 2.0) * Math.random());
+
+						// Don't spin as much.
+						this.JumpStart.freefallRot.multiplyScalar(0.5);
+
+						if( g_myDrum.userData.scoreReset )
+						{
+							g_myDrum.JumpStart.score = 0;
+							g_myDrum.userData.scoreReset = false;
+						}
+
+						g_myDrum.JumpStart.score++;
+
+						//MakeDrumHitParticles(this);
+						DoAutoSync(g_myDrum, true);
+
+						this.userData.syncData.freefallRot = new THREE.Vector3().copy(this.JumpStart.freefallRot);
+
+						this.JumpStart.score++;
+						this.JumpStart.sync();
+
+						// Setup a new lerp, first frame.
+						g_myDrum.scale.set(1.0, 1.0, 1.0);
+						g_myDrum.userData.targetScale = new THREE.Vector3(1.5, 0.7, 1.5);
+						g_myDrum.userData.targetScaleOriginal = new THREE.Vector3().copy(g_myDrum.scale);
+						g_myDrum.userData.targetScaleLerp = 0.0;
+						g_myDrum.userData.targetScaleLerpTime = 0.1;
+
+						// Setup the rest of the animation
+						g_myDrum.userData.targetScaleAnim = [
+								{
+									targetScale: new THREE.Vector3(0.8, 1.3, 0.8),
+									targetScaleOriginal: null,
+									targetScaleLerp: 0.0,
+									targetScaleLerpTime: 0.2
+								},
+								{
+									targetScale: new THREE.Vector3(1.2, 0.8, 1.2),
+									targetScaleOriginal: null,
+									targetScaleLerp: 0.0,
+									targetScaleLerpTime: 0.1
+								},
+								{
+									targetScale: new THREE.Vector3(1.0, 1.0, 1.0),
+									targetScaleOriginal: null,
+									targetScaleLerp: 0.0,
+									targetScaleLerpTime: 0.05
+								}
+							];
+					}
+					else
+					{
+						if( this.JumpStart.hasOwnProperty("velocity") )
+							exitVel.copy(this.JumpStart.velocity);
+						else
+							exitVel.set(0, 0, 0);
+
+						//exitVel.y *= -0.7;
+						exitVel.y *= -1.0;
+						exitVel.multiplyScalar(0.7);
+
+						var exitVelLength = exitVel.length();
+
+						if( exitVel.y > 0.5)
+						{
+							this.JumpStart.velocity.set(0, 0, 0);
+
+							if( !this.userData.hasOwnProperty("velocity") )
+								this.userData.velocity = new THREE.Vector3();
+							this.userData.velocity.set(0, 0, 0);
+
+							this.JumpStart.applyForce(exitVel);
+
+							var freefallRot = new THREE.Vector3((Math.PI / 2.0) * Math.random(), (Math.PI / 2.0) * Math.random(), (Math.PI / 2.0) * Math.random());
+
+							if( exitVelLength < 0.5 )
+								freefallRot.multiplyScalar(exitVel.length());
+							else
+								freefallRot.multiplyScalar(0.5);
+
+							this.JumpStart.freefallRot.copy(freefallRot);
+							this.userData.syncData.freefallRot = new THREE.Vector3().copy(freefallRot);
+						}
+						else
+						{
+							if( this.JumpStart.physicsState !== 0 )
+							{
+								this.JumpStart.makeStatic();
+								//this.JumpStart.score = 0;
+								this.JumpStart.sync();
+
+								if( g_myDrum.JumpStart.score > g_myDrum.JumpStart.bestScore )
+								{
+									g_myDrum.JumpStart.bestScore = g_myDrum.JumpStart.score;
+									//g_myDrum.JumpStart.sync();
+									DoAutoSync(g_myDrum, true);
+								}
+
+								g_myDrum.userData.scoreReset = true;
+
+								//g_myDrum.JumpStart.score = 0;
+								//g_myDrum.JumpStart.sync();
+							}
+						}
+					}
+				}
+
+				// Scores
+				if( this.userData.lastScore !== this.JumpStart.score && !g_isGear )
+				{
+					var elem = scoreBoard.querySelector("#ball");
+					elem.innerHTML = "<h2>TOTAL: " + this.JumpStart.score + "</h1>";
+					this.userData.lastScore = this.JumpStart.score;
+				}
+			}
+
+			function TikiBallHasStopped()
+			{
+				if( beatLoop )
+				{
+					//beatLoop.pause();
+					//beatLoop.currentTime = 0;
+
+					beatLoop.stop();
+					beatLoop.volume(0.0);
+
+			//		JumpStart.killSound(beatLoop);
+					beatLoop = null;
+
+
+					var needsSync = true;
+					if( g_highScores.JumpStart.scores["player1"] === g_localUser.displayName )
+					{
+						g_highScores.JumpStart.scores["player1"] = "OPEN";
+						g_highScores.JumpStart.scores["player2"] = "OPEN";
+					}
+					else if( g_highScores.JumpStart.scores["player2"] === g_localUser.displayName )
+					{
+						if( g_highScores.JumpStart.scores["player2"] === "OPEN" )
+						{
+							g_highScores.JumpStart.scores["player1"] = "OPEN";
+							g_highScores.JumpStart.scores["player2"] = "OPEN";
+						}
+						else
+						{
+							if( g_myDrum )
+							{	
+								g_myDrum.JumpStart.pleaseWait = true;
+								g_myDrum.JumpStart.clickToJoin = false;
+								//g_myDrum.JumpStart.sync();
+								DoAutoSync(g_myDrum, true);
+							}
+
+							needsSync = false;
+						}
+					}
+					else
+						needsSync = false;
+
+					if( needsSync )
+					{
+						g_highScores.JumpStart.sync();
+
+						if( g_myDrum )
+						{	
+							g_myDrum.JumpStart.pleaseWait = true;
+							g_myDrum.JumpStart.clickToJoin = false;
+							DoAutoSync(g_myDrum, true);
+							//g_myDrum.JumpStart.sync();
+						}
+					}
+				}
+			}
+
+			function highScores()
+			{
+				g_highScores = this;
+				g_highScores.JumpStart.addDataListener("scores", function(oldValue, value, isLocal) {
+					if( value["player1"] === "OPEN" || value["player2"] === "OPEN" && g_myDrum && g_myDrum.JumpStart.pleaseWait )
+					{
+						g_myDrum.JumpStart.pleaseWait = false;
+						g_myDrum.JumpStart.clickToJoin = true;
+					}
+					else if( value["player1"] !== "OPEN" && value["player2"] !== "OPEN" && g_myDrum.JumpStart.clickToJoin )
+					{
+						g_myDrum.JumpStart.pleaseWait = true;
+						g_myDrum.JumpStart.clickToJoin = false;
+					}
+
+/*
+					var scoresArray = new Array();
+					var i;
+					for( i in value )
+					{
+						scoresArray.push(value[i]);
+					}
+
+					scoresArray.sort(function(a, b) { return (a.high - b.high) * (-1); });
+					*/
+					var table = document.getElementById("highscores");
+
+					// Remove all old rows
+					var targetRows = table.getElementsByTagName("tr");
+					while( targetRows.length > 0 )
+					{
+						table.removeChild(targetRows[0]);
+						targetRows = table.getElementsByTagName("tr");
+					}
+
+					// Add new rows
+					var x, playerScore, row, nameCol, scoreCol;
+					for( x in value )
+					{
+						playerScore = value[x];
+						row = document.createElement("tr");
+
+						nameCol = document.createElement("td");
+						if( x === "player1" )
+							nameCol.innerHTML = "Player 1: ";
+						else
+							nameCol.innerHTML = "Player 2: ";
+
+						scoreCol = document.createElement("td");
+
+						var stuff = playerScore;
+						if( stuff === "OPEN" )
+							stuff = "<font style='color: orange;'>" + stuff + "</font>";
+
+						scoreCol.innerHTML = stuff;
+
+						row.appendChild(nameCol);
+						row.appendChild(scoreCol);
+						table.appendChild(row);
+					}
+				});
+			}
+
+			var g_highScores = null;
+			function MakeDrumHitParticles(ball)
+			{
+				//if( !beatLoop || beatLoop.flexVolume === 0.0 )
+				if( !beatLoop || beatLoop.volume() === 0.0 )
+				{
+					if( !beatLoop )
+					{
+						beatLoop = new SeamlessLoop();
+						beatLoop.addUri("legacy/v1/sounds/TikiDrum/beat.ogg", 15603.7, "beat");
+						beatLoop.start("beat");
+
+						//beatLoop = JumpStart.playSound("legacy/v1/sounds/TikiDrum/beat", 0.3, true);
+					}
+					else
+					{
+						beatLoop.play();
+					}
+
+					beatLoop.volume(0.03);
+					//beatLoop.flexVolume = 0.3;
+				}
+
+				var randIndex = Math.round(Math.random() * 10);
+//				JumpStart.playSound("legacy/v1/sounds/TikiDrum/cymb" + randIndex, 0.2, false);
+
+			//	var oldBallLook = new THREE.Vector3().copy(ball.rotation);
+
+					// Particles
+				var i, particle;
+				var maxParticles = 16;
+
+				if( g_isGear )
+					maxParticles = 0;
+				else
+					JumpStart.playSound("legacy/v1/sounds/TikiDrum/cymb" + randIndex, 0.2, false);
+
+				for( i = 0; i < maxParticles; i++ )
+				{
+					particle = JumpStart.spawnInstance("legacy/v1/models/TikiDrum/pixel2.obj");
+					particle.JumpStart.blocksLOS = false;
+					particle.position.copy(ball.position);
+					particle.rotation.copy(ball.rotation);
+
+					var scale = Math.random();
+					scale *= 0.7;
+
+					if( scale < 0.5 )
+						scale = 0.5;
+
+					particle.scale.multiplyScalar(scale);
+
+					var randoX = 3.0 * Math.random();
+					if( Math.random() > 0.5 )
+						randoX *= -1.0;
+
+					var randoY = 3.0 * Math.random();
+					if( Math.random() > 0.5 )
+						randoY *= -1.0;
+
+					var randoZ = 3.0 * Math.random();
+					if( Math.random() > 0.5 )
+						randoZ *= -1.0;
+
+					particle.translateX(randoX);
+
+					if( randoY > 0 )
+						particle.translateY(randoY);
+
+					particle.translateZ(randoZ);
+
+					particle.position.y = ball.position.y;
+
+			//		ball.lookAt(particle.position);
+			//		particle.rotation.copy(ball.rotation);
+
+					particle.lookAt(ball.position);
+			//		particle.rotation.multiplyScalar(-1.0);
+
+					particle.position.y = ball.position.y - 15.0;
+
+					particle.userData.shock = 2.0;
+					particle.userData.life = 0.05;
+					particle.scale.multiplyScalar(10.0);
+
+					particle.JumpStart.onTick = function()
+					{
+						particle.userData.shock -= g_deltaTime;
+
+						if( particle.userData.shock <= 0.0 )
+						{
+							if( this.userData.hasOwnProperty("will") )
+								this.userData.will -= 1.0 * g_deltaTime;
+
+							if( !this.userData.hasOwnProperty("direction") || this.userData.will <= 0)
+							{
+								var randoPitch = Math.PI * Math.random();
+								if( Math.random() > 0.5 )
+									randoPitch *= -1.0;
+
+								var randoYaw = Math.PI * Math.random();
+								if( Math.random() > 0.5 )
+									randoYaw *= -1.0;
+
+								var randoRoll = Math.PI * Math.random();
+								if( Math.random() > 0.5 )
+									randoRoll *= -1.0;
+
+								this.userData.direction = new THREE.Vector3(randoPitch, randoYaw, randoRoll);
+								this.userData.will = 3.0 * Math.random();
+							}
+
+							this.userData.life -= g_deltaTime;
+							if( this.userData.life <= 0 )
+							{
+								// Leave this in will make it scale down x2 as fast after life is gone.
+								this.scale.x -= 6.0 * g_deltaTime;
+								this.scale.y -= 6.0 * g_deltaTime;
+								this.scale.z -= 6.0 * g_deltaTime;
+							}
+
+							this.rotateX(this.userData.direction.x * g_deltaTime);
+							this.rotateY(this.userData.direction.y * g_deltaTime);
+							this.rotateZ(this.userData.direction.z * g_deltaTime);
+
+							this.translateZ(15.0 * g_deltaTime);
+							this.position.y += 10.0 * g_deltaTime;
+						}
+						else
+						{
+							this.translateZ(200.0 * g_deltaTime);
+						}
+
+						this.scale.x -= 6.0 * g_deltaTime;
+						this.scale.y -= 6.0 * g_deltaTime;
+						this.scale.z -= 6.0 * g_deltaTime;
+
+						if( this.scale.x <= 0.1 )
+							g_scene.remove(this);
+					};
+				}
+
+				//ball.rotation.copy(oldBallLook);
+			}
+		</script>
+	</body>
+</html>

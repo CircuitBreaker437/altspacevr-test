@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>RC Deathmatch</title>
+		<script src="engine/misc/JumpStart.js"></script>
+		<script src="assets/RCDM/misc/rcdm.js"></script>
+		<script src="assets/RCDM/misc/graspable.js"></script>
+		<script src="assets/RCDM/misc/rcdmChopper.js"></script>
+		<script src="assets/RCDM/misc/rcdmChopper2.js"></script>
+		<script src="assets/RCDM/misc/rcdmChopper3.js"></script>
+		<script src="assets/RCDM/misc/rcdmChopper4.js"></script>
+		<script src="assets/RCDM/misc/rcdmChopper5.js"></script>
+		<script src="assets/RCDM/misc/rcdmBomber.js"></script>
+		<script src="assets/RCDM/misc/rcdmPlane.js"></script>
+		<script src="assets/RCDM/misc/rcdmPlane2.js"></script>
+		<script src="assets/RCDM/misc/rcdmPlane3.js"></script>
+		<script src="assets/RCDM/misc/rcdmPlane4.js"></script>
+		<script src="assets/RCDM/misc/rcdmPlane5.js"></script>
+		<script src="assets/RCDM/misc/rcdmPlane6.js"></script>
+		<script src="assets/RCDM/misc/rcdmPlane7.js"></script>
+		<script src="assets/RCDM/misc/rcdmStartButton.js"></script>
+
+		<script>
+			loadJumpStart({
+				"appID": "RCDM",
+				"multiuserOnly": true,
+				"sceneScale": 1.0,
+				"enclosureOnly": true,
+				"scaleWithEnclosure": false,
+				"debug": {"showCursorPlanes": true}
+			});
+
+			jumpStart.addEventListener("precache", function()
+			{
+				var vehicleType = {
+					"id": "rcdmChopper",
+					"name": "Rambo",
+					"clawOffset": new THREE.Vector3(0, -10, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/chopper"
+						},
+						"blades":
+						{
+							"modelFile": "models/chopper_blades",
+							"offset": new THREE.Vector3(0, 8.81, 2.88),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -5.0
+						},
+						"backBlades":
+						{
+							"modelFile": "models/chopper_blades_back",
+							"offset": new THREE.Vector3(0, 3.982, -27.848),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -8.0
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmChopper2",
+					"name": "Hummingbird",
+					"clawOffset": new THREE.Vector3(0, -10, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/chopper2"
+						},
+						"blades":
+						{
+							"modelFile": "models/chopper2_blades",
+							"offset": new THREE.Vector3(0, 12.696, -5.285),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -5.0
+						},
+						"backBlades":
+						{
+							"modelFile": "models/chopper2_blades_back",
+							"offset": new THREE.Vector3(1.217, 6.939, -32.696),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -5.0
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmChopper3",
+					"name": "Heavy Lifter",
+					"clawOffset": new THREE.Vector3(0, -10, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/chopper3",
+							"colorCode": "#531400"
+						},
+						"blades":
+						{
+							"modelFile": "models/chopper3_blades",
+							"offset": new THREE.Vector3(0, 8.259, 0),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -6.0
+						},
+						"blades2":
+						{
+							"modelFile": "models/chopper3_blades2",
+							"offset": new THREE.Vector3(0, 14.927, -0.108),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": 6.0
+						},
+						"frontGun0":
+						{
+							"modelFile": "models/barrel",
+							"offset": new THREE.Vector3(-4.948, -8, -4.86),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"cooldown": 0.5,
+							"shotsFired": 0,
+							"colorCode": "#531400"
+						},
+						"frontGun1":
+						{
+							"modelFile": "models/barrel",
+							"offset": new THREE.Vector3(4.948, -8, -4.86),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"cooldown": 0.5,
+							"shotsFired": 0,
+							"colorCode": "#531400"
+						},
+						"frontGun2":
+						{
+							"modelFile": "models/barrel",
+							"offset": new THREE.Vector3(-6.001, 0.61, 2.876),
+							"rotate": new THREE.Vector3(0.349066, 0, 0),
+							"cooldown": 0.5,
+							"shotsFired": 0,
+							"colorCode": "#531400"
+						},
+						"frontGun3":
+						{
+							"modelFile": "models/barrel",
+							"offset": new THREE.Vector3(6.001, 0.61, 2.876),
+							"rotate": new THREE.Vector3(0.349066, 0, 0),
+							"cooldown": 0.5,
+							"shotsFired": 0,
+							"colorCode": "#531400"
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmChopper4",
+					"name": "Crazyhorse",
+					"clawOffset": new THREE.Vector3(0, -3.0, 0.0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/chopper4",
+							"colorCode": "#143006"
+						},
+						"blades":
+						{
+							"modelFile": "models/chopper4_blades",
+							"offset": new THREE.Vector3(-0.008, 10.571, 8.571),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -6.0
+						},
+						"blades2":
+						{
+							"modelFile": "models/chopper4_blades2",
+							"offset": new THREE.Vector3(0.003, 13.063, -16.794),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": 6.0
+						},
+						"frontGun0":
+						{
+							"modelFile": "models/barrel",
+							"offset": new THREE.Vector3(-5.061, -8, 0.0),
+							"rotate": new THREE.Vector3(0.174533, 0, 0),
+							"cooldown": 0.5,
+							"shotsFired": 0,
+							"colorCode": "#143006"
+						},
+						"frontGun1":
+						{
+							"modelFile": "models/barrel",
+							"offset": new THREE.Vector3(5.061, -8, 0.0),
+							"rotate": new THREE.Vector3(0.174533, 0, 0),
+							"cooldown": 0.5,
+							"shotsFired": 0,
+							"colorCode": "#143006"
+						},
+						"frontGun2":
+						{
+							"modelFile": "models/barrel",
+							"offset": new THREE.Vector3(-1.737, -5.75, -7.655),
+							"rotate": new THREE.Vector3(0.349066, 0, 0),
+							"cooldown": 0.5,
+							"shotsFired": 0,
+							"colorCode": "#143006"
+						},
+						"frontGun3":
+						{
+							"modelFile": "models/barrel",
+							"offset": new THREE.Vector3(1.737, -5.75, -7.655),
+							"rotate": new THREE.Vector3(0.349066, 0, 0),
+							"cooldown": 0.5,
+							"shotsFired": 0,
+							"colorCode": "#143006"
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmChopper5",
+					"name": "Doofus",
+					"clawOffset": new THREE.Vector3(0, -4.0, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/chopper5"
+						},
+						"blades":
+						{
+							"modelFile": "models/chopper5_blades",
+							"offset": new THREE.Vector3(0, 9.625, -0.218),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -5.0
+						},
+						"backBlades":
+						{
+							"modelFile": "models/chopper5_blades_back",
+							"offset": new THREE.Vector3(0.453, 6.154, -23.274),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -8.0
+						},
+						"frontGun0":
+						{
+							"modelFile": "models/barrel",
+							"offset": new THREE.Vector3(6.0, 0.0, 0.0),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"cooldown": 0.5,
+							"shotsFired": 0
+							//"rotSpeed": -8.0
+						},
+						"frontGun1":
+						{
+							"modelFile": "models/barrel",
+							"offset": new THREE.Vector3(-6.0, 0.0, 0.0),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"cooldown": 0.5,
+							"shotsFired": 0
+							//"rotSpeed": -8.0
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmBomber",
+					"name": "Bada Boomer",
+					"clawOffset": new THREE.Vector3(0, -4.0, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/bomber"
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmPlane",
+					"name": "Stuntman",
+					"clawOffset": new THREE.Vector3(0, -1.0, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/plane"
+						},
+						"blades":
+						{
+							"modelFile": "models/plane_blades",
+							"offset": new THREE.Vector3(0, -1.638, 14.963),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -7.0
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmPlane2",
+					"name": "Hercules",
+					"clawOffset": new THREE.Vector3(0, -10.0, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/plane2"
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmPlane3",
+					"name": "Sully",
+					"clawOffset": new THREE.Vector3(0, -8.0, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/plane3"
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmPlane4",
+					"name": "Ace",
+					"clawOffset": new THREE.Vector3(0, -6.0, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/plane4"
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmPlane5",
+					"name": "Teardrop",
+					"clawOffset": new THREE.Vector3(0, -6.0, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/plane5"
+						},
+						"blades":
+						{
+							"modelFile": "models/plane5_blades",
+							"offset": new THREE.Vector3(22.101, 1.93, 11.906),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -7.0
+						},
+						"blades2":
+						{
+							"modelFile": "models/plane5_blades2",
+							"offset": new THREE.Vector3(-22.101, 1.93, 11.906),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -7.0
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmPlane6",
+					"name": "Panther",
+					"clawOffset": new THREE.Vector3(0, -10.0, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/plane6"
+						},
+						"blades":
+						{
+							"modelFile": "models/plane6_blades",
+							"offset": new THREE.Vector3(32.495, 2.294, 15.416),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -7.0
+						},
+						"blades2":
+						{
+							"modelFile": "models/plane6_blades2",
+							"offset": new THREE.Vector3(17.778, 3.537, 15.416),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -7.0
+						},
+						"blades3":
+						{
+							"modelFile": "models/plane6_blades3",
+							"offset": new THREE.Vector3(-17.778, 3.537, 15.416),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -7.0
+						},
+						"blades4":
+						{
+							"modelFile": "models/plane6_blades4",
+							"offset": new THREE.Vector3(-32.495, 2.294, 15.416),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -7.0
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				vehicleType = {
+					"id": "rcdmPlane7",
+					"name": "Toxie",
+					"clawOffset": new THREE.Vector3(0, -13.0, 0),
+					"parts":
+					{
+						"body":
+						{
+							"modelFile": "models/plane7"
+						},
+						"blades":
+						{
+							"modelFile": "models/plane7_blades",
+							"offset": new THREE.Vector3(43.046, -1.815, 12.422),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -7.0
+						},
+						"blades2":
+						{
+							"modelFile": "models/plane7_blades2",
+							"offset": new THREE.Vector3(27.915, -6.182, 15.777),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -7.0
+						},
+						"blades3":
+						{
+							"modelFile": "models/plane7_blades3",
+							"offset": new THREE.Vector3(-27.904, -6.192, 15.781),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -7.0
+						},
+						"blades4":
+						{
+							"modelFile": "models/plane7_blades4",
+							"offset": new THREE.Vector3(-43.007, -1.821, 12.476),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -7.0
+						}
+					}
+				};
+				jumpStart.behaviors.rcdm.addVehicleType(vehicleType);
+
+				// Async
+				jumpStart.loadModelsEx(["models/cauldron", "models/water", "models/player_laser", "models/pumpkin1", "models/pumpkin2", "models/pumpkin3", "models/pumpkin4", "models/pumpkin5", "models/pumpkinbomb", "models/button", "models/buttonFrame"], function()
+					{
+						jumpStart.doneCaching();
+					});
+
+				// true	: SYNCHRONOUS
+				// false: ASYNCHRONOUS (must call JumpStart.doneCaching)
+				return false;
+			});
+
+			jumpStart.addEventListener("initialize", function()
+			{
+				console.log("initing");
+
+				var pumpkin = spawnPumpkin("models/pumpkin1", 164.0, 164.0);
+				pumpkin.sync();
+
+				pumpkin = spawnPumpkin("models/pumpkin2", -164.0, 164.0);
+				pumpkin.sync();
+
+				pumpkin = spawnPumpkin("models/pumpkin3", -164.0, -164.0);
+				pumpkin.sync();
+
+				pumpkin = spawnPumpkin("models/pumpkin4", 164.0, -164.0);
+				pumpkin.sync();
+
+				pumpkin = spawnPumpkin("models/pumpkin5", -164.0, 0);
+				pumpkin.sync();
+
+				pumpkin = spawnPumpkin("models/pumpkinbomb", 164.0, 0);
+				pumpkin.name = "da bomb";
+				pumpkin.sync();
+
+				// true	: SYNCHRONOUS
+				// false: ASYNCHRONOUS (must call JumpStart.doneInitializing)
+				return true;
+			});
+
+			function createButton()
+			{
+				var custom = {
+					"vehicleTypeName": "rcdmChopper",
+					"parts": {
+						"blades": {
+							"modelFile": "models/chopper2_blades"/*,
+							"offset": new THREE.Vector3(0, 8.81, 2.88),
+							"rotate": new THREE.Vector3(0, 0, 0),
+							"rotSpeed": -50.0*/
+						}
+					},
+					"claw": {
+						"wireModel": "models/wire",
+						"bodyModel": "models/claw",
+						"offset": new THREE.Vector3(0, -7.0, 0),
+						"maxLength": 100.0
+					}
+				};
+
+				var randomVehicleTypeName = jumpStart.behaviors.rcdm.getRandomVehicleTypeName();
+
+				var button = jumpStart.spawnInstance(null);
+				button.applyBehavior("rcdmStartButton", {"custom": {"vehicleTypeName": randomVehicleTypeName}});
+
+				button.rotateX(-Math.PI / 2.0);
+				//button.position.z += 150.0;
+				button.ignoreSync.transform.scale = true;
+
+				var sign = (Math.random() > 0.5) ? -1.0 : 1.0;
+				button.position.x += ((jumpStart.enclosure.scaledWidth / 2.0) - 50.0) * Math.random() * sign;
+				sign = (Math.random() > 0.5) ? -1.0 : 1.0;
+				button.position.z += ((jumpStart.enclosure.scaledWidth / 2.0) - 50.0) * Math.random() * sign;
+
+				//button.applyBehavior("autoRemoval");
+				//button.sync();
+			}
+
+			function spawnPumpkin(model, x, z)
+			{
+				var pumpkin = jumpStart.spawnInstance(model);
+				
+				var tempRad = (!!pumpkin.boundingSphere) ? pumpkin.boundingSphere.radius : 10.0;
+				pumpkin.position.y += tempRad * 0.5;
+				pumpkin.position.x = x;
+				pumpkin.position.z = z;
+
+				pumpkin.addEventListener("tick", pumpkinTick);
+
+				pumpkin.applyBehavior("graspable");
+				//pumpkin.applyBehavior("collidable");
+				pumpkin.applyBehavior("dropShadow");
+				pumpkin.applyBehavior("lerpSync");
+				pumpkin.sync();
+				return pumpkin;
+			}
+
+			function pumpkinTick()
+			{
+				var tempRad = (!!this.boundingSphere) ? this.boundingSphere.radius : 10.0;
+				if( !!this.behaviors.physics && this.behaviors.physics && this.position.y < tempRad * 0.6 && this.userData.physics.velocity.length() < 2.0 )
+				{
+					this.position.y = tempRad * 0.5;
+
+					if( this.ownerID === jumpStart.localUser.userID )
+					{
+						console.log("remove the shit");
+						this.unapplyBehavior("physics");
+						this.applyBehavior("lerpSync");
+						this.sync();
+					}
+				}
+			}
+
+			jumpStart.addEventListener("ready", function()
+			{
+				//jumpStart.addEventListener("gamepadbutton", rcButtonListener);
+				createButton();
+
+				function makeWater()
+				{
+					water.scale.x = 0.47;
+					water.scale.z = 0.47;
+					this.position.y = 90.0;
+					this.position.x -= 2.0;
+					this.position.z -= 2.0;
+					this.addEventListener("tick", function()
+					{
+						var amount = 1.0 * jumpStart.deltaTime;
+						if( !!this.userData.reverseWaterSpin )
+						{
+							amount *= 0.8;
+							this.rotateY(amount);
+						}
+						else
+							this.rotateY(-amount);
+					});
+
+					if( !!this.userData.reverseWaterSpin )
+					{
+						this.scale.y *= 0.7;	// Don't want the waves to be 100% identical at the half-way mark.
+						makeThrob.call(this, {"maxScale": 0.5, "minScale": 0.05, "direction": 1.0, "rate": 0.5, "axes": "y"});
+					}
+					else
+						makeThrob.call(this, {"maxScale": 0.5, "minScale": 0.05, "direction": -1.0, "rate": 0.5, "axes": "y"});	
+				}
+
+				var cauldron = jumpStart.spawnInstance("models/cauldron");
+
+
+				// FIXME: we need a standard default tempRad value as part of JumpStart.
+				var tempRad = (!!cauldron.boundingSphere) ? cauldron.boundingSphere.radius : 10.0;
+				// shadow
+				var geometry = new THREE.SphereGeometry( tempRad, 5, 8, 0, Math.PI);
+				var material = new THREE.MeshBasicMaterial( {color: 0x000000, transparent: true, opacity: 0.5} );
+				//var material = new THREE.MeshBasicMaterial( {color: 0x000000} );
+				var shadowObject = new THREE.Mesh( geometry, material );
+				var shadow = jumpStart.spawnInstance(null, {"object": shadowObject});
+				shadow.scale.z = 0.05;
+				shadow.rotateX(-Math.PI / 2.0);
+				cauldron.userData.shadow = shadow;
+				shadow.userData.cauldron = cauldron;
+
+				makeThrob.call(shadow, {"maxScale": 1.0, "minScale": 0.95, "direction": 1.0, "rate": 0.1, "axes": "xy"});
+
+				//var pool = jumpStart.spawnInstance("models/pool", {"parent": goal});
+				var water = jumpStart.spawnInstance("models/water", {"parent": cauldron});
+				makeWater.call(water);
+				water = jumpStart.spawnInstance("models/water", {"parent": cauldron});
+				water.rotation.y = Math.PI * 1.2;
+				water.userData.reverseWaterSpin = true;
+				makeWater.call(water);
+
+				// true	: SYNCHRONOUS
+				// false: ASYNCHRONOUS (must call JumpStart.run)
+				return true;
+			});
+
+			function makeThrob(options)
+			{
+				// Throb
+				// FIX ME: This should be a behavior, and needs to have info split between userData and syncData to do so.
+
+				options = {
+					"rate": (!!options.rate) ? options.rate : 25.0,
+					"maxScale": (!!options.maxScale) ? options.maxScale : 14.0,
+					"minScale": (!!options.minScale) ? options.minScale : 8.0,
+					"direction": (!!options.direction) ? options.direction : 1.0,
+					"axes": (!!options.axes) ? options.axes : "xyz"
+				};
+				this.userData.throb = options;
+
+				this.addEventListener("tick", function()
+				{
+					var i;
+					var axes = this.userData.throb.axes;
+					var amount = this.userData.throb.rate * jumpStart.deltaTime * this.userData.throb.direction;
+					if( this.scale[axes[0]] + amount > this.userData.throb.maxScale )
+					{
+						this.userData.throb.direction = -1.0;
+
+						for( i = 0; i < axes.length; i++ )
+							this.scale[axes[i]] = this.userData.throb.maxScale;
+					}
+					else if( this.scale[axes[0]] + amount < this.userData.throb.minScale )
+					{
+						this.userData.throb.direction = 1.0;
+
+						for( i = 0; i < axes.length; i++ )
+							this.scale[axes[i]] = this.userData.throb.minScale;
+					}
+					else
+					{
+						for( i = 0; i < axes.length; i++ )
+							this.scale[axes[i]] += amount;
+					}
+				});
+			}
+		</script>
+	</head>
+
+	<body style="background-color: transparent;">
+		<script>
+			if( !jumpStart.isAltspace )
+				document.body.style.background = "url('assets/RCDM/misc/backdrop.jpg')";
+		</script>
+
+	</body>
+</html>
