@@ -24,6 +24,13 @@
 				// false: ASYNCHRONOUS (must call JumpStart.doneCaching)
 				return false;
 			});
+			
+			jumpStart.addEventListener("initialize", function()
+			{
+				// true	: SYNCHRONOUS
+				// false: ASYNCHRONOUS (must call JumpStart.doneInitializing)
+				return true;
+			});
 			/*
 			function spin()
 			{
