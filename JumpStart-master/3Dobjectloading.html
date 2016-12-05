@@ -31,6 +31,13 @@
 				// false: ASYNCHRONOUS (must call JumpStart.doneInitializing)
 				return true;
 			});
+			
+			jumpStart.addEventListener("ready", function()
+			{
+				var pool = jumpStart.spawnInstance("models/pool");
+				pool.scale.set(2, 2, 2);
+			});
+			
 			/*
 			function spin()
 			{
@@ -45,7 +52,7 @@
 			}
 			*/
 			
-			/*
+			/* ADDED
 			jumpStart.addEventListener("precache", function()
 			{
 				// Async
@@ -60,7 +67,7 @@
 			});
 			*/
 			
-			/*
+			/* ADDED
 			jumpStart.addEventListener("initialize", function()
 			{
 				// true	: SYNCHRONOUS
@@ -69,7 +76,7 @@
 			});
 			*/
 			
-			/*
+			/* PARIALS
 			jumpStart.addEventListener("ready", function()
 			{
 				function makeWater()
