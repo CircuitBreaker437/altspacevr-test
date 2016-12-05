@@ -16,7 +16,7 @@
 			{
 				// Async
 				//jumpStart.loadModels(["models/pool", "models/block", "models/water"]).then( function()
-				jumpStart.loadModels(["models/pool", "models/Creature"]).then( function()
+				jumpStart.loadModels(["models/pool", "models/creature"]).then( function()
 				{
 					jumpStart.doneCaching();
 				});
@@ -35,10 +35,10 @@
 			
 			jumpStart.addEventListener("ready", function()
 			{
-				var rabbit = jumpStart.spawnInstance("models/Creature");
-				rabbit.scale.set(1, 1, 1);
-				//var pool = jumpStart.spawnInstance("models/pool");
-				//pool.scale.set(2, 2, 2);
+				var rabbit = jumpStart.spawnInstance("models/creature");
+				rabbit.scale.set(2, 2, 2);
+				var pool = jumpStart.spawnInstance("models/pool");
+				pool.scale.set(2, 2, 2);
 				//ball.scale.set(2, 2, 2);
 				//ball.position.y += 150;
 				//ball.position.x += 120;
